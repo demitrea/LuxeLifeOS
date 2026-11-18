@@ -15,6 +15,8 @@ const APP_FILES = [
   './js/logic/goals.js',
   './js/logic/boundaries.js',
   './js/logic/review.js',
+  './js/integrations/contract.js',
+  './js/integrations/ics.js',
   './js/ui/shared.js',
   './js/ui/today.js',
   './js/ui/life.js',

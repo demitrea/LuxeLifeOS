@@ -1,7 +1,7 @@
 // Executive Review: a Monday–Sunday summary of the week containing `today`.
 
 import { BRIEFING, DOMAINS } from './config.js';
-import { conflictsInRange, dayLoad, isWorkDay } from './boundaries.js';
+import { conflictsInRange, dayLoad, isWorkDay, meetingLoad } from './boundaries.js';
 import { addDays, startOfWeek } from './dates.js';
 import { goalStatus } from './goals.js';
 
@@ -15,6 +15,7 @@ const completedOn = (t) => (t.completedAt ? t.completedAt.slice(0, 10) : '');
 
 export function weeklyReview(state, today) {
   const { tasks, goals, settings } = state;
+  const events = state.events || [];
   const range = weekRange(today);
 
   // Completed this week (by completion date).
@@ -35,10 +36,11 @@ export function weeklyReview(state, today) {
   goalSummaries.forEach((g) => { goalCounts[g.status] += 1; });
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(range.start, i));
-  const plannedMinutes = days.reduce((sum, d) => sum + dayLoad(tasks, d), 0);
+  const plannedMinutes = days.reduce((sum, d) => sum + dayLoad(tasks, d, events), 0);
+  const meetingMinutes = days.reduce((sum, d) => sum + meetingLoad(events, d), 0);
   const capacityMinutes = days.filter((d) => isWorkDay(settings, d)).length * (Number(settings.maxDailyWorkMinutes) || 0);
 
-  const conflicts = conflictsInRange(tasks, settings, range.start, range.end);
+  const conflicts = conflictsInRange(tasks, settings, range.start, range.end, events);
   const overrides = conflicts.filter((c) => c.acknowledged).length;
 
   // Areas needing attention
@@ -67,6 +69,6 @@ export function weeklyReview(state, today) {
 
   return {
     range, completed, unfinished, byDomain, goalSummaries, goalCounts,
-    plannedMinutes, capacityMinutes, conflicts, overrides, attention,
+    plannedMinutes, meetingMinutes, capacityMinutes, conflicts, overrides, attention,
   };
 }

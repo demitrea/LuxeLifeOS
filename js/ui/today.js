@@ -1,11 +1,11 @@
 // Today — the Daily Executive Briefing.
 
-import { BRIEFING } from '../logic/config.js';
+import { BRIEFING, DOMAINS } from '../logic/config.js';
 import { CONFLICT_LABELS, dayConflicts, dayLoad, isWorkDay } from '../logic/boundaries.js';
-import { addDays, formatDate, formatHours } from '../logic/dates.js';
+import { addDays, formatDate, formatHours, minutesToTime, timeToMinutes } from '../logic/dates.js';
 import { goalsMap, topPriorities } from '../logic/priority.js';
 import { weeklyReview } from '../logic/review.js';
-import { emptyState, esc, icon, meter, severityTag, taskRow } from './shared.js';
+import { domainLabel, emptyState, esc, icon, meter, severityTag, taskRow } from './shared.js';
 
 function greeting(hour) {
   if (hour < 12) return 'Good morning.';
@@ -39,6 +39,44 @@ function welcome() {
   </section>`;
 }
 
+/** Consolidated view of today's meetings (all calendars) and timed tasks. */
+function schedule(state, today) {
+  const events = state.events || [];
+  const sources = new Map((state.sources || []).map((src) => [src.id, src]));
+  const todays = events.filter((e) => e.date <= today && e.endDate >= today);
+  const allDay = todays.filter((e) => e.allDay);
+  const items = [
+    ...todays.filter((e) => !e.allDay && e.date === today).map((e) => ({
+      kind: 'event', time: e.startTime, end: e.endDate > e.date ? '24:00' : e.endTime, title: e.title, category: e.category,
+      sub: [sources.get(e.sourceId)?.label, e.location, e.busy ? '' : 'Free'].filter(Boolean).join(' · '),
+    })),
+    ...state.tasks.filter((t) => t.status === 'open' && t.scheduledDate === today && t.startTime).map((t) => ({
+      kind: 'task', id: t.id, time: t.startTime,
+      end: minutesToTime(Math.min(1439, timeToMinutes(t.startTime) + (t.estimateMinutes || 0))),
+      title: t.title, category: DOMAIN_TYPES.get(t.domain), sub: `Task · ${domainLabel(t.domain)}`,
+    })),
+  ].sort((a, b) => a.time.localeCompare(b.time) || (a.kind === 'event' ? -1 : 1));
+
+  if (!sources.size && !items.length) return '';
+  const row = (it) => {
+    const inner = `<span class="agenda-time">${esc(it.time)}<small>${esc(it.end)}</small></span>
+      <span class="agenda-bar agenda-${esc(it.category)}${it.kind === 'task' ? ' agenda-task' : ''}" aria-hidden="true"></span>
+      <span class="agenda-text"><strong>${esc(it.title)}</strong><span class="small muted">${esc(it.sub)}</span></span>`;
+    return it.kind === 'task'
+      ? `<li><button class="agenda-item" type="button" data-action="edit-task" data-id="${esc(it.id)}">${inner}</button></li>`
+      : `<li class="agenda-item">${inner}</li>`;
+  };
+  return `
+  <section class="card">
+    <h2 class="card-title">Today\u2019s schedule</h2>
+    ${allDay.length ? `<p class="small">${allDay.map((e) => `<span class="tag">All day</span> ${esc(e.title)}`).join('<br>')}</p>` : ''}
+    ${items.length ? `<ol class="agenda">${items.map(row).join('')}</ol>` : '<p class="small muted">No meetings or timed tasks today.</p>'}
+    <p class="small muted legend"><span class="legend-dot legend-professional"></span>Professional <span class="legend-dot legend-personal"></span>Personal</p>
+  </section>`;
+}
+
+const DOMAIN_TYPES = new Map(DOMAINS.map((d) => [d.id, d.type]));
+
 function list(title, tasks, ctx, extra = '') {
   if (!tasks.length) return '';
   return `<section class="section">
@@ -50,7 +88,7 @@ function list(title, tasks, ctx, extra = '') {
 export function renderToday({ state, today, now }) {
   const { tasks, goals, settings } = state;
   const goalsById = goalsMap(goals);
-  const isNew = !tasks.length && !goals.length;
+  const isNew = !tasks.length && !goals.length && !(state.events || []).length;
   const top = topPriorities(tasks, goals, today);
   const open = tasks.filter((t) => t.status === 'open');
   const byDue = (a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0);
@@ -60,10 +98,11 @@ export function renderToday({ state, today, now }) {
   // Upcoming excludes anything already shown above, so each task appears once.
   const shown = new Set([...top.map((r) => r.task.id), ...followUps.map((t) => t.id)]);
   const upcoming = open.filter((t) => t.dueDate && t.dueDate >= today && t.dueDate <= horizon && !shown.has(t.id)).sort(byDue);
-  const load = dayLoad(tasks, today);
+  const events = state.events || [];
+  const load = dayLoad(tasks, today, events);
   const cap = settings.maxDailyWorkMinutes;
   const workDay = isWorkDay(settings, today);
-  const conflicts = dayConflicts(tasks, settings, today);
+  const conflicts = dayConflicts(tasks, settings, today, events);
   const review = weeklyReview(state, today);
   const ctx = { today, goalsById };
 
@@ -103,6 +142,8 @@ export function renderToday({ state, today, now }) {
     : emptyState('Nothing needs you right now.', 'No open tasks are due or planned for today. Enjoy the space, or plan ahead in My Life.', '<button class="btn" type="button" data-action="new-task">Add a task</button>')}
   </section>` : ''}
 
+  ${!isNew ? schedule(state, today) : ''}
+
   ${!isNew ? `
   <section class="card capacity">
     <div class="capacity-head">
@@ -111,7 +152,7 @@ export function renderToday({ state, today, now }) {
     </div>
     ${workDay ? meter(load, cap) : ''}
     <p class="muted small">${workDay
-    ? `Working hours ${esc(settings.workStart)}–${esc(settings.workEnd)}. Counts work tasks (Career, Business, Education) planned for today.`
+    ? `Working hours ${esc(settings.workStart)}–${esc(settings.workEnd)}. Counts work tasks (Career, Business, Education) and meetings from professional calendars.`
     : settings.protectRestDays ? 'Today is protected for rest. Work planned today will be flagged.' : 'Today is not a working day.'}</p>
     ${conflicts.length ? `<ul class="alerts">${conflicts.map((c) => `
       <li class="alert alert-${c.severity}">

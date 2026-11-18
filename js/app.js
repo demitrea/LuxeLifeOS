@@ -8,12 +8,13 @@ import { localISODate, localISODateTime, timeToMinutes } from './logic/dates.js'
 import { defaultTargetDate } from './logic/goals.js';
 import { goalsMap, scoreTask } from './logic/priority.js';
 import { weeklyReview } from './logic/review.js';
+import { eventsFromICS } from './integrations/ics.js';
 import { renderToday } from './ui/today.js';
 import { renderLife } from './ui/life.js';
 import { renderGoals } from './ui/goals.js';
 import { renderBoundaries } from './ui/boundaries.js';
 import {
-  blockForm, confirmSheet, conflictWarning, daySheet, goalForm, guideSheet, msRow,
+  blockForm, confirmSheet, conflictWarning, daySheet, goalForm, guideSheet, importSheet, msRow,
   reviewSheet, taskForm, whySheet,
 } from './ui/sheets.js';
 
@@ -28,6 +29,7 @@ const loaded = loadState();
 let state = loaded.state;
 const ui = { lifeView: 'open', lifeFilter: 'all' };
 let pendingTask = null; // a task waiting for a boundary decision
+let pendingImport = null; // a calendar file waiting for the user's choices
 let undo = null;
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -86,6 +88,7 @@ function closeSheet() {
 sheet.addEventListener('close', () => {
   sheetBody.innerHTML = '';
   pendingTask = null;
+  pendingImport = null;
   lastFocus?.focus?.({ preventScroll: true });
 });
 sheet.addEventListener('click', (e) => {
@@ -143,7 +146,7 @@ function submitTask(form) {
       ...draft, id: newId('t'), status: 'open', createdAt: localISODateTime(), completedAt: null, overrides: [],
     };
   const after = existing ? state.tasks.map((t) => (t.id === task.id ? task : t)) : [...state.tasks, task];
-  const created = newConflicts(state.tasks, after, state.settings, [existing?.scheduledDate, task.scheduledDate])
+  const created = newConflicts(state.tasks, after, state.settings, [existing?.scheduledDate, task.scheduledDate], state.events)
     .filter((c) => (c.taskIds || []).includes(task.id));
 
   if (needsDecision(created)) {
@@ -215,6 +218,46 @@ function submitBlock(form) {
   commit({ ...state, settings: { ...state.settings, protectedBlocks } }, 'Protected time saved.');
 }
 
+// ---------- calendar import (.ics, on device) ----------
+async function previewCalendar(file) {
+  if (file.size > 10 * 1024 * 1024) return toast('That file is larger than 10 MB.', { error: true });
+  try {
+    const text = await file.text();
+    const preview = eventsFromICS(text, { sourceId: 'preview', category: 'professional', today: today() });
+    pendingImport = { text, fileName: file.name || 'calendar.ics' };
+    const keep = pendingImport;
+    openSheet(importSheet(preview, state.sources, keep.fileName));
+    pendingImport = keep;
+  } catch (err) {
+    toast(err.message || 'Could not read that calendar file.', { error: true });
+  }
+}
+
+function submitImport(form) {
+  if (!pendingImport) return closeSheet();
+  const f = new FormData(form);
+  const label = (f.get('label') || '').toString().trim();
+  if (!label) return formError(form, 'Please name this calendar.');
+  const category = f.get('category') === 'personal' ? 'personal' : 'professional';
+  const replaceId = (f.get('replace') || '').toString();
+  const sourceId = replaceId || newId('src');
+  const result = eventsFromICS(pendingImport.text, { sourceId, category, today: today() });
+  // Keep acknowledgements for events that are still present after a refresh.
+  const previous = new Map(state.events.filter((e) => e.sourceId === sourceId).map((e) => [e.id, e.overrides]));
+  const events = result.events.map((e) => ({ ...e, overrides: previous.get(e.id) || [] }));
+  const source = {
+    id: sourceId, type: 'ics', label, category, accountId: null,
+    importedAt: localISODateTime(), rangeStart: result.windowStart, rangeEnd: result.windowEnd,
+  };
+  const sources = replaceId ? state.sources.map((src) => (src.id === sourceId ? source : src)) : [...state.sources, source];
+  closeSheet();
+  commit({
+    ...state,
+    sources,
+    events: [...state.events.filter((e) => e.sourceId !== sourceId), ...events],
+  }, `${events.length} events imported from “${label}”.`);
+}
+
 // ---------- settings ----------
 function updateSetting(el) {
   const key = el.dataset.setting;
@@ -256,7 +299,7 @@ function exportData() {
 async function importData(file) {
   try {
     const next = importJSON(await file.text());
-    commit(next, `Backup restored: ${next.tasks.length} tasks, ${next.goals.length} goals.`);
+    commit(next, `Backup restored: ${next.tasks.length} tasks, ${next.goals.length} goals, ${next.sources.length} calendars.`);
   } catch (err) {
     toast(`Could not import: ${err.message}`, { error: true });
   }
@@ -358,6 +401,21 @@ const actions = {
     commit({ ...state, settings: { ...state.settings, protectedBlocks: state.settings.protectedBlocks.filter((b) => b.id !== el.dataset.id) } }, 'Protected time removed.');
   },
 
+  'ack-event': (el) => {
+    const ids = new Set((el.dataset.events || '').split(',').filter(Boolean));
+    const code = el.dataset.code;
+    const events = state.events.map((e) => (ids.has(e.id) && !e.overrides.includes(code) ? { ...e, overrides: [...e.overrides, code] } : e));
+    commit({ ...state, events }, 'Acknowledged.');
+  },
+  'remove-source': (el) => {
+    const src = state.sources.find((x) => x.id === el.dataset.id);
+    if (!src) return;
+    openSheet(confirmSheet({
+      title: `Remove “${src.label}”?`,
+      body: 'Its imported events will be removed from LuxeLifeOS on this device. Your original calendar is not affected.',
+      confirmLabel: 'Remove calendar', action: `confirm-remove-source:${src.id}`, danger: true,
+    }));
+  },
   export: exportData,
   'load-sample': () => {
     if (!state.tasks.length && !state.goals.length) return commit(sampleState(today()), 'Fictional sample data loaded.');
@@ -378,6 +436,15 @@ document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const [name, arg] = el.dataset.action.split(':');
+  if (name === 'confirm-remove-source') {
+    closeSheet();
+    commit({
+      ...state,
+      sources: state.sources.filter((x) => x.id !== arg),
+      events: state.events.filter((x) => x.sourceId !== arg),
+    }, 'Calendar removed.');
+    return;
+  }
   if (name === 'confirm-delete-goal') {
     closeSheet();
     commit({
@@ -398,12 +465,17 @@ document.addEventListener('submit', (e) => {
   const form = e.target.closest('form[data-form]');
   if (!form) return;
   e.preventDefault();
-  ({ task: submitTask, goal: submitGoal, block: submitBlock })[form.dataset.form]?.(form);
+  ({ task: submitTask, goal: submitGoal, block: submitBlock, import: submitImport })[form.dataset.form]?.(form);
 });
 
 document.addEventListener('change', (e) => {
   const el = e.target;
   if (el.dataset.setting) return updateSetting(el);
+  if (el.id === 'ics-file' && el.files?.[0]) {
+    previewCalendar(el.files[0]);
+    el.value = '';
+    return;
+  }
   if (el.id === 'import-file' && el.files?.[0]) {
     importData(el.files[0]);
     el.value = '';

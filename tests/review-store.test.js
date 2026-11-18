@@ -69,11 +69,35 @@ test('corrupt data is set aside instead of overwritten', () => {
   assert.equal(storage.getItem(`${STORAGE_KEY}.corrupt`), '{not json');
 });
 
+test('version 1 data (no calendars) loads unchanged into version 2', () => {
+  const v1 = { schemaVersion: 1, settings: emptyState().settings, goals: [], tasks: [{ id: 't1', title: 'Old task', status: 'open', domain: 'career' }] };
+  const s = normalizeState(v1);
+  assert.equal(s.schemaVersion, 2);
+  assert.equal(s.tasks[0].title, 'Old task');
+  assert.equal(s.tasks[0].source, null);
+  assert.deepEqual(s.sources, []);
+  assert.deepEqual(s.events, []);
+});
+
+test('events without a known calendar source are dropped', () => {
+  const s = normalizeState({
+    sources: [{ id: 'src1', type: 'ics', label: 'Work', category: 'personal' }, { id: 'bad', type: 'unknown' }],
+    events: [
+      { id: 'e1', sourceId: 'src1', title: 'Kept', date: '2026-11-18', startTime: '09:00', endTime: '10:00', category: 'professional' },
+      { id: 'e2', sourceId: 'missing', title: 'Orphan', date: '2026-11-18' },
+    ],
+  });
+  assert.equal(s.sources.length, 1);
+  assert.deepEqual(s.events.map((e) => e.id), ['e1']);
+  assert.equal(s.events[0].category, 'personal'); // category always follows the source
+});
+
 test('import validates and cleans data', () => {
   const restored = importJSON(exportJSON(sampleState(TODAY)));
   assert.deepEqual(restored, sampleState(TODAY));
   assert.throws(() => importJSON('[]'));
   assert.throws(() => importJSON('{"schemaVersion": 99}'));
+  assert.throws(() => importJSON('{"schemaVersion": 3}'));
   const cleaned = normalizeState({
     tasks: [{ id: 'x', title: 'T', domain: 'nonsense', importance: 12, dueDate: '2026-02-30', goalId: 'missing', overrides: ['BOGUS', 'REST_DAY'] }, { title: 'no id' }],
   });

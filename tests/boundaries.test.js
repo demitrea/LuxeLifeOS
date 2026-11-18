@@ -113,3 +113,67 @@ test('conflictsInRange sorts by date then severity', () => {
   ]);
   assert.deepEqual(conflictsInRange(tasks, settings, '2026-11-19'), [list[3]]);
 });
+
+// ---------- calendar events ----------
+const meeting = (id, fields) => ({
+  id, sourceId: 's', title: id, date: WED, startTime: '10:00', endTime: '11:00', endDate: WED,
+  allDay: false, busy: true, category: 'professional', location: '', overrides: [], ...fields,
+});
+
+test('professional meetings count toward capacity; personal and free events do not', () => {
+  const events = [
+    meeting('m1', { startTime: '09:00', endTime: '12:00' }), // 180
+    meeting('m2', { startTime: '13:00', endTime: '14:00', category: 'personal' }),
+    meeting('m3', { startTime: '14:00', endTime: '15:00', busy: false }),
+    meeting('m4', { allDay: true, startTime: null, endTime: null }),
+  ];
+  const tasks = [task('t', { scheduledDate: WED, estimateMinutes: 360 })];
+  assert.equal(dayLoad(tasks, WED, events), 540);
+  assert.deepEqual(codes(dayConflicts(tasks, settings, WED, events)), ['CAPACITY_EXCEEDED']);
+  // Meetings alone can exceed capacity.
+  const allDayOfMeetings = [meeting('a', { startTime: '09:00', endTime: '17:30' }), meeting('b', { startTime: '08:00', endTime: '09:00' })];
+  assert.ok(codes(dayConflicts([], settings, WED, allDayOfMeetings)).includes('CAPACITY_EXCEEDED'));
+});
+
+test('a professional meeting in protected time raises a boundary alert; a personal event does not', () => {
+  const dinner = meeting('Client dinner', { startTime: '18:30', endTime: '20:30' });
+  assert.deepEqual(codes(dayConflicts([], settings, WED, [dinner])), ['OUTSIDE_HOURS', 'PROTECTED_TIME']);
+  const family = meeting('Family birthday', { startTime: '18:30', endTime: '20:30', category: 'personal' });
+  assert.deepEqual(codes(dayConflicts([], settings, WED, [family])), []);
+});
+
+test('professional meetings on rest days are flagged', () => {
+  const sat = meeting('Weekend call', { date: SAT, endDate: SAT });
+  assert.deepEqual(codes(dayConflicts([], settings, SAT, [sat])), ['REST_DAY']);
+});
+
+test('double-booking: task vs meeting and meeting vs meeting, across calendars', () => {
+  const standup = meeting('Stand-up', { startTime: '09:30', endTime: '10:15' });
+  const t = task('Presentation', { scheduledDate: WED, startTime: '10:00', estimateMinutes: 60 });
+  assert.deepEqual(codes(dayConflicts([t], settings, WED, [standup])), ['DOUBLE_BOOKED']);
+  const personal = meeting('School pickup', { startTime: '10:00', endTime: '10:30', category: 'personal', sourceId: 'home' });
+  const list = dayConflicts([], settings, WED, [standup, personal]);
+  assert.deepEqual(codes(list), ['DOUBLE_BOOKED']);
+  assert.deepEqual(list[0].eventIds, ['Stand-up', 'School pickup']);
+  // Back-to-back meetings are not double-booked.
+  const next = meeting('Next', { startTime: '10:15', endTime: '11:00' });
+  assert.deepEqual(codes(dayConflicts([], settings, WED, [standup, next])), []);
+});
+
+test('saving a task into a meeting slot asks for a decision', () => {
+  const events = [meeting('Board meeting', { startTime: '14:00', endTime: '15:00' })];
+  const t = task('Draft', { scheduledDate: WED, startTime: '14:30', estimateMinutes: 30 });
+  const added = newConflicts([], [t], settings, [WED], events);
+  assert.deepEqual(codes(added), ['DOUBLE_BOOKED']);
+  assert.equal(needsDecision(added), true);
+});
+
+test('meetings that run past midnight are clipped to their start day', () => {
+  const late = meeting('Late launch', { startTime: '23:00', endTime: '01:00', endDate: '2026-11-19' });
+  assert.equal(dayLoad([], WED, [late]), 60);
+});
+
+test('conflictsInRange includes days that only have meetings', () => {
+  const sat = meeting('Weekend call', { date: SAT, endDate: SAT });
+  assert.deepEqual(conflictsInRange([], settings, WED, undefined, [sat]).map((c) => c.code), ['REST_DAY']);
+});

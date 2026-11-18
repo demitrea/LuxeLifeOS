@@ -257,16 +257,53 @@ export function guideSheet() {
     <p class="small muted">Default target dates: ${HORIZONS.map((h) => `${h.label} = ${HORIZON_DAYS[h.id]} days`).join(', ')}.</p>
 
     <h3>Boundary Intelligence</h3>
-    <p>Work tasks are those in Career, Business and Education. Checks run on tasks with a planned date.</p>
+    <p>Work tasks are those in Career, Business and Education. Checks run on tasks with a planned date and on imported calendar events.</p>
     <ul>
       <li><strong>Over capacity</strong> (high): work planned for a day exceeds your daily maximum.</li>
       <li><strong>Near capacity</strong> (notice): above ${Math.round(BOUNDARIES.capacityNearRatio * 100)}% of your daily maximum.</li>
       <li><strong>Rest day</strong> (high): work planned on a non-working day while rest days are protected.</li>
       <li><strong>Outside working hours</strong> (medium): a timed work task starts before or ends after your working hours.</li>
-      <li><strong>Protected time</strong> (high): any timed task overlaps a protected block.</li>
+      <li><strong>Protected time</strong> (high): any timed task, or a meeting from a professional calendar, overlaps a protected block.</li>
+      <li><strong>Double-booked</strong> (medium): a timed task overlaps a meeting, or two meetings overlap, across any of your calendars.</li>
     </ul>
+    <p>Meetings from calendars marked <em>Professional</em> count as work toward your daily capacity and are checked against working hours and rest days. Personal calendar events are only checked for double-booking. All-day and “free” events never count.</p>
     <p>Before you save a task that creates a high or medium conflict, LuxeLifeOS asks you to decide. Choosing <em>Save anyway</em> records an intentional override.</p>
   </div>`;
+}
+
+export function importSheet(preview, sources, fileName) {
+  const { stats, calendarName, windowStart, windowEnd } = preview;
+  const suggested = calendarName || fileName.replace(/\.[^.]+$/, '') || 'Calendar';
+  const icsSources = sources.filter((src) => src.type === 'ics');
+  const notes = [
+    stats.cancelled ? `${stats.cancelled} cancelled event${stats.cancelled === 1 ? '' : 's'} skipped.` : '',
+    stats.outsideWindow ? `${stats.outsideWindow} event${stats.outsideWindow === 1 ? '' : 's'} outside this range skipped.` : '',
+    stats.limitedRecurrence ? `${stats.limitedRecurrence} repeating series use a pattern LuxeLifeOS cannot expand yet; only the first occurrence is included.` : '',
+    stats.truncated ? `Only the first ${stats.imported} events are included.` : '',
+  ].filter(Boolean);
+  return `
+  ${sheetHeader('Import calendar', fileName)}
+  <form class="sheet-body form" data-form="import" novalidate>
+    <p><strong>${stats.imported}</strong> event${stats.imported === 1 ? '' : 's'} found from ${esc(formatDate(windowStart))} to ${esc(formatDate(windowEnd))}.</p>
+    ${notes.length ? `<ul class="small muted plain">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    <label class="field"><span>Calendar name</span><input name="label" maxlength="80" required value="${esc(suggested)}"></label>
+    <fieldset class="field">
+      <legend>What kind of calendar is this?</legend>
+      <label class="choice"><input type="radio" name="category" value="professional" checked>
+        <span><strong>Professional</strong><br><span class="small muted">Meetings count as work and are checked against working hours, rest days and protected time.</span></span></label>
+      <label class="choice"><input type="radio" name="category" value="personal">
+        <span><strong>Personal</strong><br><span class="small muted">Shown in your schedule and checked for double-booking, but never counted as work.</span></span></label>
+    </fieldset>
+    ${icsSources.length ? `<label class="field"><span>Add or replace</span><select name="replace">
+      <option value="">Add as a new calendar</option>
+      ${icsSources.map((src) => `<option value="${esc(src.id)}">Replace “${esc(src.label)}”</option>`).join('')}
+    </select></label>` : ''}
+    <p class="small muted">Read on this device only. Titles, times and locations are kept; descriptions, attendees and notes are discarded.</p>
+    <p class="form-error" role="alert" hidden></p>
+    <div class="sheet-actions">
+      <button class="btn btn-primary btn-block" type="submit" ${stats.imported ? '' : 'disabled'}>Import ${stats.imported} event${stats.imported === 1 ? '' : 's'}</button>
+    </div>
+  </form>`;
 }
 
 export function confirmSheet({ title, body, confirmLabel, action, danger = false }) {

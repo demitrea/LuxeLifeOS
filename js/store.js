@@ -3,12 +3,14 @@
 import { DOMAINS, HORIZON_DAYS } from './logic/config.js';
 import { addDays, isISODate, localISODateTime, timeToMinutes } from './logic/dates.js';
 import { defaultTargetDate } from './logic/goals.js';
+import { normalizeEvent, normalizeSource, normalizeTaskSource } from './integrations/contract.js';
 
 export const STORAGE_KEY = 'luxelifeos.v1';
-export const SCHEMA_VERSION = 1;
+// v1: tasks, goals, settings. v2 adds calendar sources and events (v1 data loads unchanged).
+export const SCHEMA_VERSION = 2;
 
 const DOMAIN_IDS = new Set(DOMAINS.map((d) => d.id));
-const CONFLICT_CODES = new Set(['CAPACITY_EXCEEDED', 'REST_DAY', 'OUTSIDE_HOURS', 'PROTECTED_TIME']);
+const CONFLICT_CODES = new Set(['CAPACITY_EXCEEDED', 'REST_DAY', 'OUTSIDE_HOURS', 'PROTECTED_TIME', 'DOUBLE_BOOKED']);
 
 export function newId(prefix) {
   return `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -26,7 +28,7 @@ export function defaultSettings() {
 }
 
 export function emptyState() {
-  return { schemaVersion: SCHEMA_VERSION, settings: defaultSettings(), tasks: [], goals: [] };
+  return { schemaVersion: SCHEMA_VERSION, settings: defaultSettings(), tasks: [], goals: [], sources: [], events: [] };
 }
 
 const str = (v, max = 200) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -55,6 +57,7 @@ function normalizeTask(t) {
     createdAt: str(t.createdAt, 30) || localISODateTime(),
     completedAt: t.status === 'done' ? str(t.completedAt, 30) || null : null,
     overrides: Array.isArray(t.overrides) ? [...new Set(t.overrides.filter((c) => CONFLICT_CODES.has(c)))] : [],
+    source: normalizeTaskSource(t.source),
   };
 }
 
@@ -101,7 +104,14 @@ export function normalizeState(raw) {
   const goalIds = new Set(goals.map((g) => g.id));
   const tasks = (Array.isArray(raw.tasks) ? raw.tasks : []).map(normalizeTask).filter(Boolean)
     .map((t) => (t.goalId && !goalIds.has(t.goalId) ? { ...t, goalId: null } : t));
-  return { schemaVersion: SCHEMA_VERSION, settings: normalizeSettings(raw.settings), tasks, goals };
+  const sources = (Array.isArray(raw.sources) ? raw.sources : []).map(normalizeSource).filter(Boolean);
+  const categoryOf = new Map(sources.map((src) => [src.id, src.category]));
+  const events = (Array.isArray(raw.events) ? raw.events : [])
+    .filter((e) => e && categoryOf.has(e.sourceId))
+    .map((e) => normalizeEvent(e, categoryOf.get(e.sourceId)))
+    .filter(Boolean)
+    .map((e) => ({ ...e, overrides: e.overrides.filter((c) => CONFLICT_CODES.has(c)) }));
+  return { schemaVersion: SCHEMA_VERSION, settings: normalizeSettings(raw.settings), tasks, goals, sources, events };
 }
 
 function defaultStorage() {
@@ -192,8 +202,25 @@ export function sampleState(today) {
     t('t_s10', { title: 'Read two chapters of a leadership book', domain: 'growth', importance: 2, estimateMinutes: 60 }),
     t('t_s11', { title: 'Send meeting notes to the team', domain: 'career', importance: 3, dueDate: d(-1), status: 'done', completedAt: `${d(-1)}T16:00:00`, estimateMinutes: 20 }),
   ];
+  const ev = (id, sourceId, title, date, startTime, endTime, extra = {}) => ({
+    id, sourceId, title, date, startTime, endTime, endDate: date, allDay: false, busy: true, location: '', overrides: [], ...extra,
+  });
+  const sources = [
+    { id: 'src_sample_work', type: 'ics', label: 'Work calendar (sample)', category: 'professional', importedAt: now, rangeStart: d(-7), rangeEnd: d(90) },
+    { id: 'src_sample_home', type: 'ics', label: 'Personal calendar (sample)', category: 'personal', importedAt: now, rangeStart: d(-7), rangeEnd: d(90) },
+  ];
+  const events = [
+    ev('e_s1', 'src_sample_work', 'Team stand-up', today, '09:30', '10:15'),
+    ev('e_s2', 'src_sample_work', 'Project review', today, '15:30', '16:30', { location: 'Conference room' }),
+    ev('e_s3', 'src_sample_work', 'Client dinner', d(2), '18:30', '20:30'),
+    ev('e_s4', 'src_sample_work', 'Planning workshop', d(1), '11:00', '12:00'),
+    ev('e_s5', 'src_sample_home', 'Dentist appointment', d(3), '08:00', '09:00'),
+    ev('e_s6', 'src_sample_home', 'Community volunteer day', d(5), null, null, { allDay: true }),
+  ];
   return normalizeState({
     schemaVersion: SCHEMA_VERSION,
+    sources,
+    events,
     settings: {
       ...defaultSettings(),
       protectedBlocks: [{ id: 'pb_sample_dinner', label: 'Family dinner', days: [0, 1, 2, 3, 4, 5, 6], start: '18:00', end: '20:00' }],

@@ -82,4 +82,11 @@ export const DOMAINS = Object.freeze([
   Object.freeze({ id: 'growth', label: 'Personal Growth', type: 'personal' }),
 ]);
 
+/** Calendar import limits (on-device .ics files today; Outlook accounts later). */
+export const INTEGRATIONS = Object.freeze({
+  icsPastDays: 7, // keep events from the last 7 days …
+  icsFutureDays: 90, // … through the next 90 days
+  maxEventsPerSource: 3000,
+});
+
 export const SEVERITY_RANK = Object.freeze({ high: 0, medium: 1, notice: 2 });

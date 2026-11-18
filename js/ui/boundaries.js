@@ -6,9 +6,50 @@ import { esc, icon, meter, screenHead, severityTag } from './shared.js';
 
 const ORDER = [1, 2, 3, 4, 5, 6, 0]; // Monday first
 
+function conflictAction(c, titleOf) {
+  if (c.taskIds?.length === 1) {
+    return `<button class="btn-link" type="button" data-action="edit-task" data-id="${esc(c.taskIds[0])}">Review “${esc(titleOf(c.taskIds[0]))}”</button>`;
+  }
+  if (c.taskIds?.length > 1) {
+    return `<button class="btn-link" type="button" data-action="show-day" data-date="${esc(c.date)}">Review tasks on this day</button>`;
+  }
+  // Meetings only: calendars are read-only, so the user can acknowledge here and change the meeting in Outlook.
+  return `<p class="small muted">Calendar events are read-only. Change the meeting in your calendar, then re-import it.</p>
+    ${c.acknowledged ? '' : `<button class="btn-link" type="button" data-action="ack-event" data-code="${esc(c.code)}" data-events="${esc((c.eventIds || []).join(','))}">Acknowledge</button>`}`;
+}
+
+function calendarsCard(sources, events) {
+  const count = (id) => events.filter((e) => e.sourceId === id).length;
+  return `
+  <section class="card">
+    <h2 class="card-title">Calendars</h2>
+    <p class="small muted">Import a calendar file (.ics) exported from Outlook or another calendar app. Meetings appear in your briefing and are checked against your boundaries. The file is read on this device and never uploaded. Only titles, times and locations are kept.</p>
+    ${sources.length ? `<ul class="blocks">${sources.map((src) => `
+      <li class="block">
+        <div><strong>${esc(src.label)}</strong> <span class="pill pill-${src.category === 'professional' ? 'pro' : 'personal'}">${src.category === 'professional' ? 'Professional' : 'Personal'}</span><br>
+        <span class="small muted">${count(src.id)} events · imported ${esc(formatDate(src.importedAt.slice(0, 10)))}${src.rangeEnd ? ` · through ${esc(formatDate(src.rangeEnd, 'month'))}` : ''}</span></div>
+        <button class="icon-btn" type="button" data-action="remove-source" data-id="${esc(src.id)}" aria-label="Remove ${esc(src.label)}">${icon('trash')}</button>
+      </li>`).join('')}</ul>` : ''}
+    <label class="btn btn-block" for="ics-file">${icon('upload')} ${sources.length ? 'Import or refresh a calendar' : 'Import calendar (.ics)'}</label>
+    <input id="ics-file" class="visually-hidden" type="file">
+    <details class="howto">
+      <summary>How to export a calendar from Outlook</summary>
+      <ul class="small">
+        <li><strong>Outlook for Windows (classic):</strong> open the calendar, choose <em>File → Save Calendar</em>, use <em>More Options</em> to pick the date range, and save the .ics file.</li>
+        <li><strong>Outlook on the web / Outlook.com:</strong> <em>Settings → Calendar → Shared calendars → Publish a calendar</em>, then open the ICS link to download the file. A published link can be viewed by anyone who has it, so unpublish it after downloading.</li>
+        <li><strong>iPhone:</strong> save the .ics file to the Files app (for example from an email attachment), then choose it here.</li>
+      </ul>
+      <p class="small muted">Imported calendars are a snapshot covering the past week and the next 90 days. Re-import to refresh. Times marked with a time zone are used as written, so export from the same time zone as this device.</p>
+    </details>
+    <p class="small muted roadmap-note">${icon('clock')} Coming in a future version: secure, read-only connections to multiple Outlook accounts, with flagged emails as follow-ups.</p>
+  </section>`;
+}
+
 export function renderBoundaries({ state, today }) {
   const { settings, tasks } = state;
-  const conflicts = conflictsInRange(tasks, settings, today);
+  const events = state.events || [];
+  const sources = state.sources || [];
+  const conflicts = conflictsInRange(tasks, settings, today, undefined, events);
   const titleOf = (id) => tasks.find((t) => t.id === id)?.title || '';
   const week = Array.from({ length: 7 }, (_, i) => addDays(today, i));
 
@@ -24,9 +65,7 @@ export function renderBoundaries({ state, today }) {
           <p><strong>${esc(CONFLICT_LABELS[c.code])}</strong> ${severityTag(c.severity)}${c.acknowledged ? ' <span class="tag">Acknowledged</span>' : ''}</p>
           <p class="small muted">${esc(formatDate(c.date))}</p>
           <p>${esc(c.message)}</p>
-          ${c.taskIds?.length === 1
-    ? `<button class="btn-link" type="button" data-action="edit-task" data-id="${esc(c.taskIds[0])}">Review “${esc(titleOf(c.taskIds[0]))}”</button>`
-    : `<button class="btn-link" type="button" data-action="show-day" data-date="${esc(c.date)}">Review tasks on this day</button>`}
+          ${conflictAction(c, titleOf)}
         </div>
       </li>`).join('')}</ul>`
     : `<p class="ok-line">${icon('check')} No conflicts. Your plans respect your boundaries.</p>`}
@@ -35,7 +74,7 @@ export function renderBoundaries({ state, today }) {
   <section class="card">
     <h2 class="card-title">Next 7 days</h2>
     <ul class="week">${week.map((d) => {
-    const load = dayLoad(tasks, d);
+    const load = dayLoad(tasks, d, events);
     const work = isWorkDay(settings, d);
     return `<li class="week-row">
         <span class="week-day">${esc(WEEKDAY_SHORT[weekday(d)])}<small>${esc(formatDate(d, 'month'))}</small></span>
@@ -44,6 +83,8 @@ export function renderBoundaries({ state, today }) {
       </li>`;
   }).join('')}</ul>
   </section>
+
+  ${calendarsCard(sources, events)}
 
   <section class="card">
     <h2 class="card-title">Working hours & capacity</h2>
