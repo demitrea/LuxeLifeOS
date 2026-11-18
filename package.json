@@ -1,0 +1,14 @@
+{
+  "name": "luxelifeos",
+  "version": "1.0.0",
+  "description": "LuxeLifeOS — a premium Personal Chief of Staff. Offline-first PWA with transparent, rule-based priorities and Boundary Intelligence.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "python3 -m http.server 8080"
+  }
+}
