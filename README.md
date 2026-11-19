@@ -3,13 +3,15 @@
 **Your Personal Chief of Staff.**
 *Work toward the life you want without losing the life you have.*
 
+LuxeLifeOS is a premium Personal Chief of Staff application designed to integrate personal and professional life management, strategic goal setting, executive prioritization, boundary intelligence, and intentional living into one sophisticated operating system.
+
 LuxeLifeOS is a premium, mobile-first web app that helps you manage your personal and professional life together. It shows what deserves your attention today, tracks strategic goals, and helps you set and keep boundaries around your time. Every recommendation comes from transparent rules you can check by hand.
 
 - **No AI, no API keys, no accounts, no backend.** All logic runs on your device.
 - **Private by design.** Your data is stored only in your browser's local storage on your device and is never sent to a server.
 - **Works offline** and installs on iPhone as a home-screen app (Progressive Web App).
 
-**Live app:** https://demitrea.github.io/luxelifeos/
+**Live app:** https://demitrea.github.io/LuxeLifeOS/
 **Roadmap:** [ROADMAP.md](ROADMAP.md) (including the planned Microsoft Outlook integration)
 
 ---
@@ -250,19 +252,19 @@ The suite checks every priority bracket at its boundaries (for example, due in 3
 
 ## Deploy to GitHub Pages
 
-1. Push the files to the `main` branch of the public repository `demitrea/luxelifeos`.
+1. Push the files to the `main` branch of the public repository `demitrea/LuxeLifeOS`.
 2. On GitHub, open the repository → **Settings** → **Pages**.
 3. Under **Build and deployment**, set **Source** to **Deploy from a branch**, choose **`main`** and **`/ (root)`**, then click **Save**.
-4. After a minute or two the app is live at **https://demitrea.github.io/luxelifeos/**.
+4. After a minute or two the app is live at **https://demitrea.github.io/LuxeLifeOS/**.
    The **Actions** tab shows the deployment's progress.
 
-All paths in the app are relative (`./`), so it works from the `/luxelifeos/` sub-path. GitHub Pages serves over HTTPS, which service workers require.
+All paths in the app are relative (`./`), so it works from the `/LuxeLifeOS/` sub-path. GitHub Pages serves over HTTPS, which service workers require.
 
 ---
 
 ## Install on iPhone
 
-1. Open **https://demitrea.github.io/luxelifeos/** in **Safari**.
+1. Open **https://demitrea.github.io/LuxeLifeOS/** in **Safari**.
 2. Tap the **Share** button (the square with an arrow).
 3. Scroll down and tap **Add to Home Screen**. The name shows as **LuxeLifeOS**. Tap **Add**.
 4. Open **LuxeLifeOS** from your home screen. It runs full screen in its own window, without Safari's address bar.
@@ -306,7 +308,7 @@ The service worker serves cached files first, so the app opens instantly offline
 | Works offline after installation | Service worker caches all app files |
 | Calculates priorities, goal progress and boundary conflicts | `js/logic/priority.js`, `goals.js`, `boundaries.js`, covered by automated tests |
 | Mobile-friendly and easy to learn | Mobile-first layout, 44pt+ touch targets, welcome card, sample data, in-app rules guide |
-| Public GitHub repository and GitHub Pages | `demitrea/luxelifeos` |
+| Public GitHub repository and GitHub Pages | `demitrea/LuxeLifeOS` |
 | No AI, API keys, passwords or backend | Pure client-side code with no external requests. Calendar import reads a local file; there is no Microsoft sign-in or API call in Version 1. |
 | Data stays on the device | No network calls. Backups are files you control. |
 | README with setup, testing, deployment and installation | This document |
