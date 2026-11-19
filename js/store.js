@@ -1,13 +1,15 @@
 // Local storage: one JSON document on this device. Nothing is ever sent anywhere.
 
-import { DOMAINS, HORIZON_DAYS } from './logic/config.js';
+import { CAPTURE, DOMAINS, HORIZON_DAYS } from './logic/config.js';
 import { addDays, isISODate, localISODateTime, timeToMinutes } from './logic/dates.js';
 import { defaultTargetDate } from './logic/goals.js';
 import { normalizeEvent, normalizeSource, normalizeTaskSource } from './integrations/contract.js';
 
 export const STORAGE_KEY = 'luxelifeos.v1';
-// v1: tasks, goals, settings. v2 adds calendar sources and events (v1 data loads unchanged).
-export const SCHEMA_VERSION = 2;
+// v1: tasks, goals, settings. v2 adds calendar sources and events.
+// v3 adds uncategorized tasks, one-time protected blocks and editable day-part
+// ranges. Older data loads unchanged and gains the new defaults.
+export const SCHEMA_VERSION = 3;
 
 const DOMAIN_IDS = new Set(DOMAINS.map((d) => d.id));
 const CONFLICT_CODES = new Set(['CAPACITY_EXCEEDED', 'REST_DAY', 'OUTSIDE_HOURS', 'PROTECTED_TIME', 'DOUBLE_BOOKED']);
@@ -24,6 +26,11 @@ export function defaultSettings() {
     maxDailyWorkMinutes: 480,
     protectRestDays: true,
     protectedBlocks: [],
+    dayParts: {
+      morning: { ...CAPTURE.defaultDayParts.morning },
+      afternoon: { ...CAPTURE.defaultDayParts.afternoon },
+      evening: { ...CAPTURE.defaultDayParts.evening },
+    },
   };
 }
 
@@ -44,7 +51,7 @@ function normalizeTask(t) {
     id: str(t.id, 60),
     title: str(t.title),
     notes: str(t.notes, 2000),
-    domain: DOMAIN_IDS.has(t.domain) ? t.domain : 'growth',
+    domain: DOMAIN_IDS.has(t.domain) ? t.domain : null, // null = uncategorized
     importance: Number.isFinite(imp) ? Math.min(5, Math.max(1, imp)) : 3,
     dueDate: date(t.dueDate),
     scheduledDate: date(t.scheduledDate),
@@ -78,6 +85,18 @@ function normalizeGoal(g) {
   };
 }
 
+function normalizeDayParts(dp) {
+  const out = {};
+  for (const part of ['morning', 'afternoon', 'evening']) {
+    const def = CAPTURE.defaultDayParts[part];
+    const v = dp && dp[part];
+    const start = v && time(v.start);
+    const end = v && time(v.end);
+    out[part] = start && end && timeToMinutes(end) > timeToMinutes(start) ? { start, end } : { ...def };
+  }
+  return out;
+}
+
 function normalizeSettings(s) {
   const d = defaultSettings();
   if (!s || typeof s !== 'object') return d;
@@ -90,7 +109,15 @@ function normalizeSettings(s) {
     protectRestDays: s.protectRestDays === undefined ? d.protectRestDays : Boolean(s.protectRestDays),
     protectedBlocks: (Array.isArray(s.protectedBlocks) ? s.protectedBlocks : [])
       .filter((b) => b && str(b.label) && time(b.start) && time(b.end))
-      .map((b) => ({ id: str(b.id, 60) || newId('pb'), label: str(b.label, 80), days: days(b.days), start: b.start, end: b.end })),
+      .map((b) => ({
+        id: str(b.id, 60) || newId('pb'),
+        label: str(b.label, 80),
+        days: isISODate(b.date) ? [] : days(b.days),
+        date: isISODate(b.date) ? b.date : null, // one-time block when set
+        start: b.start,
+        end: b.end,
+      })),
+    dayParts: normalizeDayParts(s.dayParts),
   };
 }
 

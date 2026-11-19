@@ -112,10 +112,24 @@ export function renderBoundaries({ state, today }) {
     <p class="small muted">Time reserved for family, health and rest. Any task planned inside these hours is flagged.</p>
     ${settings.protectedBlocks.length ? `<ul class="blocks">${settings.protectedBlocks.map((b) => `
       <li class="block">
-        <div><strong>${esc(b.label)}</strong><br><span class="small muted">${esc(ORDER.filter((d) => b.days.includes(d)).map((d) => WEEKDAY_SHORT[d]).join(', ') || 'No days')} · ${esc(b.start)}–${esc(b.end)}</span></div>
+        <div><strong>${esc(b.label)}</strong><br><span class="small muted">${b.date
+    ? `One time · ${esc(formatDate(b.date))}${b.date < today ? ' (past)' : ''}`
+    : esc(ORDER.filter((d) => b.days.includes(d)).map((d) => WEEKDAY_SHORT[d]).join(', ') || 'No days')} · ${esc(b.start)}–${esc(b.end)}</span></div>
         <button class="icon-btn" type="button" data-action="edit-block" data-id="${esc(b.id)}" aria-label="Edit ${esc(b.label)}">${icon('chevron')}</button>
       </li>`).join('')}</ul>` : ''}
     <button class="btn btn-block" type="button" data-action="new-block">${icon('plus')} Add protected time</button>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Time-of-day words</h2>
+    <p class="small muted">What “morning”, “afternoon” and “evening” mean when you type or dictate a note, for example “protect Friday evening”.</p>
+    ${['morning', 'afternoon', 'evening'].map((part) => `
+      <div class="daypart-row">
+        <span class="daypart-name">${part[0].toUpperCase()}${part.slice(1)}</span>
+        <label class="field"><span class="visually-hidden">${part} starts</span><input type="time" data-setting="dayPart" data-part="${part}" data-edge="start" value="${esc(settings.dayParts[part].start)}"></label>
+        <span aria-hidden="true">–</span>
+        <label class="field"><span class="visually-hidden">${part} ends</span><input type="time" data-setting="dayPart" data-part="${part}" data-edge="end" value="${esc(settings.dayParts[part].end)}"></label>
+      </div>`).join('')}
   </section>
 
   <section class="card">

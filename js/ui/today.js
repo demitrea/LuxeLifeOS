@@ -6,6 +6,7 @@ import { addDays, formatDate, formatHours, minutesToTime, timeToMinutes } from '
 import { goalsMap, topPriorities } from '../logic/priority.js';
 import { weeklyReview } from '../logic/review.js';
 import { domainLabel, emptyState, esc, icon, meter, severityTag, taskRow } from './shared.js';
+import { captureCard } from './capture.js';
 
 function greeting(hour) {
   if (hour < 12) return 'Good morning.';
@@ -53,7 +54,7 @@ function schedule(state, today) {
     ...state.tasks.filter((t) => t.status === 'open' && t.scheduledDate === today && t.startTime).map((t) => ({
       kind: 'task', id: t.id, time: t.startTime,
       end: minutesToTime(Math.min(1439, timeToMinutes(t.startTime) + (t.estimateMinutes || 0))),
-      title: t.title, category: DOMAIN_TYPES.get(t.domain), sub: `Task · ${domainLabel(t.domain)}`,
+      title: t.title, category: DOMAIN_TYPES.get(t.domain) || 'personal', sub: `Task · ${domainLabel(t.domain)}`,
     })),
   ].sort((a, b) => a.time.localeCompare(b.time) || (a.kind === 'event' ? -1 : 1));
 
@@ -85,7 +86,9 @@ function list(title, tasks, ctx, extra = '') {
   </section>`;
 }
 
-export function renderToday({ state, today, now }) {
+const UNDO_WINDOW_MS = 10 * 60 * 1000; // the Undo banner stays for 10 minutes
+
+export function renderToday({ state, today, now, ui }) {
   const { tasks, goals, settings } = state;
   const goalsById = goalsMap(goals);
   const isNew = !tasks.length && !goals.length && !(state.events || []).length;
@@ -120,6 +123,8 @@ export function renderToday({ state, today, now }) {
     <h1 class="display">${greeting(now.getHours())}</h1>
     <p class="lede">${isNew ? 'Let’s set up your briefing.' : esc(summary)}</p>
   </header>
+
+  ${captureCard(ui.captureDraft, ui.lastCapture && now.getTime() - ui.lastCapture.at < UNDO_WINDOW_MS ? ui.lastCapture : null)}
 
   ${isNew ? welcome() : ''}
 

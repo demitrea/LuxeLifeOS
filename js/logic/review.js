@@ -24,11 +24,11 @@ export function weeklyReview(state, today) {
   const unfinished = tasks.filter((t) => t.status === 'open'
     && ((t.dueDate && t.dueDate <= range.end) || inRange(t.scheduledDate, range)));
 
-  const byDomain = DOMAINS.map((d) => ({
+  const byDomain = [...DOMAINS, { id: null, label: 'Uncategorized' }].map((d) => ({
     domain: d.id,
     label: d.label,
-    completed: completed.filter((t) => t.domain === d.id).length,
-    unfinished: unfinished.filter((t) => t.domain === d.id).length,
+    completed: completed.filter((t) => (t.domain || null) === d.id).length,
+    unfinished: unfinished.filter((t) => (t.domain || null) === d.id).length,
   }));
 
   const goalSummaries = goals.map((goal) => ({ goal, ...goalStatus(goal, today) }));
@@ -62,6 +62,10 @@ export function weeklyReview(state, today) {
     if (waiting && !recent) {
       attention.push({ kind: 'neglected', domain: d.id, message: `${d.label}: a task has waited ${BRIEFING.neglectDays}+ days with nothing completed in this area since.` });
     }
+  }
+  const uncategorized = tasks.filter((t) => t.status === 'open' && !t.domain).length;
+  if (uncategorized) {
+    attention.push({ kind: 'uncategorized', message: `${uncategorized} open task${uncategorized === 1 ? ' is' : 's are'} uncategorized. Sort ${uncategorized === 1 ? 'it' : 'them'} in My Life when you have a moment.` });
   }
   if (plannedMinutes > capacityMinutes) {
     attention.push({ kind: 'capacity', message: 'Planned work this week is more than your weekly capacity.' });

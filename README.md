@@ -7,6 +7,7 @@ LuxeLifeOS is a premium Personal Chief of Staff application designed to integrat
 
 LuxeLifeOS is a premium, mobile-first web app that helps you manage your personal and professional life together. It shows what deserves your attention today, tracks strategic goals, and helps you set and keep boundaries around your time. Every recommendation comes from transparent rules you can check by hand.
 
+- **Voice-first, low-friction capture.** Type or dictate several commitments at once ("Paper due Monday, follow up with my advisor tomorrow, protect Friday evening"), review what LuxeLifeOS understood, and save everything with one tap.
 - **No AI, no API keys, no accounts, no backend.** All logic runs on your device.
 - **Private by design.** Your data is stored only in your browser's local storage on your device and is never sent to a server.
 - **Works offline** and installs on iPhone as a home-screen app (Progressive Web App).
@@ -20,6 +21,7 @@ LuxeLifeOS is a premium, mobile-first web app that helps you manage your persona
 
 1. [Features](#features)
 2. [How the rules work](#how-the-rules-work)
+   - [Quick capture: type or dictate](#quick-capture-type-or-dictate)
    - [Calendar import (.ics)](#calendar-import-ics)
 3. [Technology](#technology)
 4. [Project structure](#project-structure)
@@ -38,7 +40,7 @@ LuxeLifeOS is a premium, mobile-first web app that helps you manage your persona
 
 | Screen | What it does |
 |---|---|
-| **Today** — Daily Executive Briefing | Top 3 priorities with a "Why?" score breakdown, a recommended *Focus first* task, **today's schedule** (meetings from imported calendars plus timed tasks), overdue items, follow-ups due, the next 7 days, today's work capacity, today's boundary alerts, and the weekly Executive Review. |
+| **Today** — Daily Executive Briefing | **"What's on your mind?"** quick capture at the top (type or use iPhone keyboard dictation, review, save in one tap, with Undo). Top 3 priorities with a "Why?" score breakdown, a recommended *Focus first* task, **today's schedule** (meetings from imported calendars plus timed tasks), overdue items, follow-ups due, the next 7 days, today's work capacity, today's boundary alerts, and the weekly Executive Review. |
 | **My Life** — Life management | Create, edit, complete and delete tasks across eight life areas: Career, Business, Education (professional) and Finances, Family, Relationships, Wellness, Personal Growth (personal). Track follow-ups and commitments. Filter by life area; view open or completed. |
 | **My Goals** — Strategic goals | 30-day, 60-day, 90-day, 6-month and 12-month goals, each broken into milestones. Progress is calculated from completed milestones, and each goal is marked On track, At risk, Behind or Complete. Link tasks to goals. |
 | **Boundaries** — Boundary Intelligence | Working hours, working days, maximum daily work, rest-day protection, and recurring protected time (for example family dinner). Shows upcoming conflicts and a 7-day capacity view. Warns you *before* you save a task that crosses a boundary and lets you override deliberately. **Imports calendar files (.ics)** from Outlook or other calendar apps, entirely on the device. Also holds backup, restore, sample data and erase controls. |
@@ -107,7 +109,7 @@ All rules are deterministic: the same data on the same date always produces the 
 
 ### Boundary conflicts
 
-Work tasks are those in **Career, Business and Education**. Checks run on tasks that have a planned date. Time-of-day checks also need a start time.
+Work tasks are those in **Career, Business and Education**. Uncategorized tasks never count as work. Checks run on tasks that have a planned date. Time-of-day checks also need a start time.
 
 | Conflict | Severity | Triggered when |
 |---|---|---|
@@ -115,7 +117,7 @@ Work tasks are those in **Career, Business and Education**. Checks run on tasks 
 | Near capacity | Notice | Work planned is above 85% of your daily maximum (up to 100%) |
 | Rest day | High | An open work task is planned on a non-working day while rest days are protected |
 | Outside working hours | Medium | A timed work task starts before or ends after your working hours |
-| Protected time | High | **Any** timed task (work or personal), or a meeting from a **professional** calendar, overlaps a protected block on that weekday |
+| Protected time | High | **Any** timed task (work or personal), or a meeting from a **professional** calendar, overlaps a protected block. One-time blocks apply on their date; repeating blocks on their weekdays. |
 | Double-booked | Medium | A timed task overlaps a busy meeting, or two busy meetings overlap (across any calendars) |
 
 **Meetings from imported calendars:**
@@ -139,6 +141,45 @@ Work tasks are those in **Career, Business and Education**. Checks run on tasks 
   - goals that are Behind
   - weekly planned work above weekly capacity
   - neglected areas: an open task has waited 14 or more days and nothing in that area has been completed in the last 14 days
+
+### Quick capture: type or dictate
+
+Voice-first entry is a core principle of LuxeLifeOS: you should be able to say what's on your mind instead of filling in forms.
+
+**How it works**
+1. On **Today**, tap **What's on your mind?** and type, or tap the **microphone on the iPhone keyboard** and speak. You can say several things at once.
+2. Tap **Review**. LuxeLifeOS shows each item it understood (task, follow-up or protected time) with its date, area and importance, and the exact words each value came from.
+3. Tap any item to correct it, or **Edit wording** to change the note. Untick an item to leave it out.
+4. Tap **Save** once to add everything. **Undo** appears immediately (as a message and as a banner on Today for 10 minutes) and removes exactly the items that were just added.
+
+The manual forms (**Add manually**, **New task**, **New goal**, **Add protected time**) remain available as a fallback.
+
+**Keyboard dictation is not in-app speech recognition.** LuxeLifeOS does not record audio, does not request microphone access, and has no speech recognition of its own. Dictation is a feature of the iPhone keyboard: iOS converts speech to text and types it into the box, and LuxeLifeOS only receives the text. Depending on device, language and settings, **Apple may process dictation on its servers**. This is outside LuxeLifeOS, and LuxeLifeOS cannot guarantee that speech stays on the device. Typing works identically. To turn dictation on: *Settings → General → Keyboard → Enable Dictation*.
+
+*Why not the browser's built-in speech recognition?* For the academic release it was evaluated and rejected:
+- Safari's Web Speech API (`webkitSpeechRecognition`) routes audio through Apple's speech services, and a web page cannot force on-device processing.
+- WebKit has stated the API is not available in web apps added to the Home Screen, which is how LuxeLifeOS is used.
+- The on-device option in Chrome (`processLocally`) is a desktop Chrome feature. Every iPhone browser uses WebKit, so it isn't available there.
+
+**Interpretation rules** (deterministic; all word lists are in [`js/logic/config.js`](js/logic/config.js); implementation in [`js/logic/capture.js`](js/logic/capture.js)):
+
+| Topic | Rule |
+|---|---|
+| **Splitting** | New item at each sentence end (`.` `!` `?` `;` or a new line). Also at a comma, "and", "then", "also" or "plus", but **only** if the next words start with an action ("need to", "call", "email", "follow up", "protect", "pay", "submit", …). "Buy milk and eggs" stays one task. One statement never produces more than one item. |
+| **Type** | "protect", "block off/out", "keep … free", "no work", "no meetings" → **protected time**. "follow up", "check in with", "hear back", "waiting on/for", "chase", "get back to" → **follow-up**. Anything else → **task**. |
+| **Dates** | today, tonight, tomorrow, the day after tomorrow, "in 3 days/2 weeks", weekday names, "Nov 25", "25th of November", "11/25" (month/day), "the 25th". A month/day that has already passed this year means next year. |
+| **Weekdays** | "Monday" = the next Monday after today. "This Monday" includes today. "Next Monday" is used directly when the soonest Monday is already next week; if it could mean two dates, you are asked. A bare weekday that is today is also asked (today or next week). |
+| **Deadline vs. plan** | A date right after "due", "by", "before", "deadline", "submit", "turn in" or "hand in" (even with a time in between, as in "by 5pm Monday") is the **due date**. Any other date is the day you **plan** to do it. For a follow-up, it is the **follow-up date**. |
+| **Never a date** | "next week", "this week", "this/next month", "end of the week/month", "soon", "later", "sometime", "at some point". These stay in the title. Repeating tasks and weekends are not turned into task dates either. |
+| **Times** | "3pm", "9:30 a.m.", "15:00", "noon" are used as said. "At 3" with no am/pm is resolved only by the user's own words ("tomorrow evening" → PM, "morning" → AM). Otherwise you are asked **AM or PM**. A time with no day asks **Today or Tomorrow**. A deadline time ("by 5pm") stays in the title, because deadlines are tracked by date. |
+| **Effort** | Only from "for 45 minutes", "for 2 hours", "for half an hour". |
+| **Protected time** | **One time** unless you say "every", use a plural ("Fridays", "evenings", "weekends") or "daily". "This weekend" = Saturday and Sunday once. Times come from an explicit range ("6 to 8 pm"), "after 6pm" (until 23:59), "before 9am" (from 00:00), or "morning/afternoon/evening" from your editable settings (defaults 06:00–12:00, 12:00–18:00, 18:00–22:00). If no time or no day is given, you are asked. A single time with no range is kept as written. The label is the purpose ("for family" → "Family time") or the time words you said. |
+| **Life area** | Only when the words include a listed word for exactly one area (for example "paper", "exam" → Education; "bill", "rent" → Finances; "dentist", "gym" → Wellness). No listed word, or words from different areas → **Uncategorized**. You can categorize it later. |
+| **Importance** | 5 for "urgent", "ASAP", "critical", "top priority"; 4 for "important", "high priority", "crucial"; 2 for "low priority", "no rush", "whenever", "someday". Otherwise **normal (3)**, the same default as the manual form, shown as a default. |
+| **Questions** | Asked **only** when the answer changes a deadline, a time-sensitive commitment or a boundary: an ambiguous weekday, AM/PM, which day for a timed item, or the day or time of protected time. Each is answered with one tap. Saving is enabled once they are answered. |
+| **Kept as written** | If a statement has several dates or times that cannot be assigned safely, or protected time with only a single time, the item keeps your **exact words** as its title and nothing else is filled in. |
+| **Boundaries** | The review runs the normal boundary checks on the whole batch, including new protected time against existing tasks and meetings. Warnings appear on the affected item. Saving records them on the new tasks as intentional overrides. |
+| **Traceability** | Each saved task's notes include the original wording ("From your note: …"). |
 
 ### Calendar import (.ics)
 
@@ -175,7 +216,8 @@ Live, automatic Outlook sync for multiple accounts is planned for a future versi
 |---|---|
 | Interface | Plain HTML, CSS and JavaScript ES modules. No framework, no build step, no dependencies. |
 | Fonts | System fonts only (Iowan Old Style / Georgia for headings, the system sans-serif for text), so nothing is fetched from outside. |
-| Storage | `localStorage`, one JSON document under the key `luxelifeos.v1` (schema version 2, with automatic migration from version 1) |
+| Storage | `localStorage`, one JSON document under the key `luxelifeos.v1` (schema version 3, with automatic migration from versions 1 and 2). The unsaved capture note is kept under `luxelifeos.captureDraft`. |
+| Quick capture | Rule-based parser in [`js/logic/capture.js`](js/logic/capture.js); input via a text box compatible with iPhone keyboard dictation (no speech API) |
 | Calendar import | Built-in iCalendar (.ics) parser in [`js/integrations/ics.js`](js/integrations/ics.js); no libraries |
 | Offline | Service worker ([`sw.js`](sw.js)) that caches every app file on first load |
 | Install | Web app manifest ([`manifest.webmanifest`](manifest.webmanifest)) and Apple touch icon |
@@ -201,10 +243,12 @@ js/logic/               Pure, testable rules (no browser APIs)
   goals.js              Goal progress and status
   boundaries.js         Conflict detection
   review.js             Weekly Executive Review
+  capture.js            Quick-capture parser (statements → proposed items)
 js/integrations/         Calendar sources (future integrations plug in here)
   contract.js           Shared CalendarSource / CalendarEvent format
   ics.js                On-device .ics parser and recurrence expansion
 js/ui/                  Screen and sheet rendering
+  capture.js            "What's on your mind?" card, review sheet, dictation notes
 icons/                  App icons (180, 192, 512 and maskable 512)
 tests/                  Automated tests for every rule
 ```
@@ -233,7 +277,15 @@ Requires Node.js 20 or newer. Nothing needs to be installed.
 npm test
 ```
 
-The suite checks every priority bracket at its boundaries (for example, due in 3 days vs. 4), the 10- and 25-point goal thresholds, each conflict rule (including meetings and double-booking), the warning-before-commit logic, the weekly review, .ics parsing and recurrence expansion, save/load, migration from version 1 data, corrupt-data recovery and backup import validation.
+The suite (84 tests) checks:
+- every priority bracket at its boundaries (for example, due in 3 days vs. 4)
+- the 10- and 25-point goal thresholds
+- each conflict rule, including meetings, double-booking and one-time protected time
+- the warning-before-commit logic and batch conflict checks
+- the weekly review
+- .ics parsing and recurrence expansion
+- **quick capture**: splitting multiple commitments, dates, weekdays, times, AM/PM questions, protected-time recurrence, area and importance words, "kept as written" cases, and that nothing is invented
+- save/load, migration from version 1 and 2 data, corrupt-data recovery and backup import validation
 
 ### Manual test checklist
 
@@ -247,6 +299,8 @@ The suite checks every priority bracket at its boundaries (for example, due in 3
 8. **Offline:** turn on Airplane Mode and reopen the app. It loads and works normally.
 9. **Backup:** **Export backup**, **Erase all data**, then **Import backup**. Everything returns.
 10. **Calendar import:** in **Boundaries → Calendars**, import an .ics file and mark it Professional. Its meetings appear in **Today's schedule**. An evening meeting during protected time shows a *Protected time* alert. A task planned on top of a meeting triggers a *Double-booked* warning.
+11. **Quick capture:** on **Today**, dictate or type *"I have a paper due Monday, need to follow up with someone tomorrow, and want Friday evening protected."* and tap **Review**. You should see a task (due Monday, Education), a follow-up (tomorrow, Uncategorized) and one-time protected time (Friday 18:00–22:00). Tap **Save 3 items**, then **Undo**. All three disappear and nothing else changes.
+12. **Questions and corrections:** type *"Meet my advisor at 3 tomorrow"*. Review asks **3 AM / 3 PM**. Tap one, then tap the item to change its area, and save.
 
 ---
 
@@ -269,6 +323,8 @@ All paths in the app are relative (`./`), so it works from the `/LuxeLifeOS/` su
 3. Scroll down and tap **Add to Home Screen**. The name shows as **LuxeLifeOS**. Tap **Add**.
 4. Open **LuxeLifeOS** from your home screen. It runs full screen in its own window, without Safari's address bar.
 
+To use voice entry, turn on keyboard dictation: *Settings → General → Keyboard → Enable Dictation*. Then tap the microphone key on the keyboard while typing in **What's on your mind?**
+
 On iOS 16.4 and later, **Add to Home Screen** is also available from the Share menu of other browsers such as Chrome, but Safari is the most reliable.
 
 > **Important:** the home-screen app keeps its own storage, separate from Safari. Data you enter in a Safari tab will not appear in the installed app. Install first, then add your data. To move data, use **Export backup** and **Import backup**.
@@ -290,6 +346,7 @@ The service worker serves cached files first, so the app opens instantly offline
 
 - All data lives in `localStorage` on your device under `luxelifeos.v1`. LuxeLifeOS makes **no network requests** other than loading its own files from GitHub Pages.
 - Imported calendar files are processed on the device. Only event titles, times and locations are stored.
+- Quick-capture notes are interpreted on the device. LuxeLifeOS never records audio or requests microphone access. iPhone keyboard dictation is an Apple feature that may process speech on Apple's servers, depending on device and settings.
 - **No AI model or AI API** is used. No API keys, passwords, analytics or third-party services.
 - Your data is erased if you delete the app from your home screen or clear the website's data in Settings. Use **Boundaries → Export backup** regularly.
 - If saved data is ever unreadable, it is set aside under `luxelifeos.v1.corrupt` rather than overwritten.
@@ -309,7 +366,7 @@ The service worker serves cached files first, so the app opens instantly offline
 | Calculates priorities, goal progress and boundary conflicts | `js/logic/priority.js`, `goals.js`, `boundaries.js`, covered by automated tests |
 | Mobile-friendly and easy to learn | Mobile-first layout, 44pt+ touch targets, welcome card, sample data, in-app rules guide |
 | Public GitHub repository and GitHub Pages | `demitrea/LuxeLifeOS` |
-| No AI, API keys, passwords or backend | Pure client-side code with no external requests. Calendar import reads a local file; there is no Microsoft sign-in or API call in Version 1. |
+| No AI, API keys, passwords or backend | Pure client-side code with no external requests. Quick capture uses fixed rules, not AI, and receives only text (voice input is the iPhone keyboard's own dictation, outside the app). Calendar import reads a local file; there is no Microsoft sign-in or API call in Version 1. |
 | Data stays on the device | No network calls. Backups are files you control. |
 | README with setup, testing, deployment and installation | This document |
 
@@ -327,3 +384,6 @@ These are deliberate scope limits for version 1.
 - All milestones count equally toward goal progress.
 - Imported calendars are snapshots. Re-import to refresh. There is no live Outlook sync yet ([planned](ROADMAP.md)).
 - Calendar times labelled with a named time zone are read as written (not converted between time zones).
+- Quick capture understands a defined set of English phrasings (see the rules table). Other phrasings are kept as written rather than guessed. Numeric dates are read as month/day (US format).
+- Quick capture creates tasks, follow-ups and protected time. Goals, repeating tasks, and changes to existing items by voice ("move my paper to Tuesday") are not supported yet.
+- Voice entry depends on iPhone keyboard dictation being enabled, and is subject to Apple's processing of dictated speech.

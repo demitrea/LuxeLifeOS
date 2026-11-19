@@ -9,7 +9,8 @@
 //  OUTSIDE_HOURS     (medium) timed work task or professional meeting that
 //                             falls outside working hours (on working days)
 //  PROTECTED_TIME    (high)   ANY timed open task, or any professional meeting,
-//                             that overlaps a protected block on that weekday
+//                             that overlaps a protected block (one-time blocks
+//                             apply on their date; repeating blocks on their weekdays)
 //  DOUBLE_BOOKED     (medium) a timed open task overlaps a busy meeting, or two
 //                             busy meetings overlap (across any calendars)
 //
@@ -123,8 +124,9 @@ export function dayConflicts(tasks, settings, date, events = []) {
   const workStart = timeToMinutes(settings.workStart);
   const workEnd = timeToMinutes(settings.workEnd);
   const hoursValid = !Number.isNaN(workStart) && !Number.isNaN(workEnd);
+  // A block applies on its one-time date, or on its weekdays when it repeats.
   const blocks = (settings.protectedBlocks || [])
-    .filter((b) => (b.days || []).includes(wd))
+    .filter((b) => (b.date ? b.date === date : (b.days || []).includes(wd)))
     .map((b) => ({ block: b, span: { start: timeToMinutes(b.start), end: timeToMinutes(b.end) } }))
     .filter(({ span }) => !Number.isNaN(span.start) && !Number.isNaN(span.end) && span.end > span.start);
 
@@ -234,6 +236,23 @@ export function newConflicts(beforeTasks, afterTasks, settings, dates, events = 
 
   return sortConflicts(after.filter((c) => {
     if (c.code.startsWith('CAPACITY')) return c.load > dayLoad(beforeTasks, c.date, events);
+    return !beforeKeys.has(conflictKey(c));
+  }));
+}
+
+/**
+ * Conflicts present in `after` that were not in `before` (both lists from
+ * conflictsInRange). Used when a batch of new items — including new protected
+ * time, which can affect existing tasks and meetings — is about to be saved.
+ * Capacity conflicts count as new only when that day's work load increased.
+ */
+export function diffConflicts(before, after) {
+  const beforeKeys = new Set(before.filter((c) => !c.code.startsWith('CAPACITY')).map(conflictKey));
+  return sortConflicts(after.filter((c) => {
+    if (c.code.startsWith('CAPACITY')) {
+      const prev = before.find((p) => p.code.startsWith('CAPACITY') && p.date === c.date);
+      return !prev || c.load > prev.load;
+    }
     return !beforeKeys.has(conflictKey(c));
   }));
 }

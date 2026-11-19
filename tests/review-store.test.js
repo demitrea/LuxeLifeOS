@@ -69,10 +69,10 @@ test('corrupt data is set aside instead of overwritten', () => {
   assert.equal(storage.getItem(`${STORAGE_KEY}.corrupt`), '{not json');
 });
 
-test('version 1 data (no calendars) loads unchanged into version 2', () => {
+test('version 1 data (no calendars) loads unchanged into the current version', () => {
   const v1 = { schemaVersion: 1, settings: emptyState().settings, goals: [], tasks: [{ id: 't1', title: 'Old task', status: 'open', domain: 'career' }] };
   const s = normalizeState(v1);
-  assert.equal(s.schemaVersion, 2);
+  assert.equal(s.schemaVersion, 3);
   assert.equal(s.tasks[0].title, 'Old task');
   assert.equal(s.tasks[0].source, null);
   assert.deepEqual(s.sources, []);
@@ -92,17 +92,74 @@ test('events without a known calendar source are dropped', () => {
   assert.equal(s.events[0].category, 'personal'); // category always follows the source
 });
 
+test('version 2 data migrates to version 3 with every record preserved', () => {
+  // A realistic v2 backup: settings without dayParts, repeating blocks, calendar data.
+  const v2 = {
+    schemaVersion: 2,
+    settings: {
+      workStart: '08:30', workEnd: '17:00', workDays: [1, 2, 3, 4], maxDailyWorkMinutes: 420, protectRestDays: false,
+      protectedBlocks: [{ id: 'pb1', label: 'Family dinner', days: [1, 2, 3, 4, 5], start: '18:00', end: '20:00' }],
+    },
+    goals: [{ id: 'g1', title: 'Goal', domain: 'education', horizon: '90d', startDate: '2026-11-01', targetDate: '2027-01-30', milestones: [{ id: 'm1', title: 'M1', done: true }] }],
+    tasks: [
+      { id: 't1', title: 'Task one', status: 'open', domain: 'career', importance: 4, dueDate: '2026-11-23', goalId: 'g1', overrides: ['REST_DAY'], createdAt: '2026-11-18T09:00:00' },
+      { id: 't2', title: 'Done task', status: 'done', domain: 'family', completedAt: '2026-11-18T10:00:00', createdAt: '2026-11-17T09:00:00' },
+    ],
+    sources: [{ id: 'src1', type: 'ics', label: 'Work', category: 'professional', importedAt: '2026-11-18T09:00:00' }],
+    events: [{ id: 'e1', sourceId: 'src1', title: 'Sync', date: '2026-11-19', startTime: '10:00', endTime: '10:30', endDate: '2026-11-19', overrides: ['DOUBLE_BOOKED'] }],
+  };
+  const s = normalizeState(v2);
+  assert.equal(s.schemaVersion, 3);
+  assert.deepEqual(
+    { ...s.settings, dayParts: undefined, protectedBlocks: undefined },
+    { workStart: '08:30', workEnd: '17:00', workDays: [1, 2, 3, 4], maxDailyWorkMinutes: 420, protectRestDays: false, dayParts: undefined, protectedBlocks: undefined },
+  );
+  assert.deepEqual(s.settings.protectedBlocks, [{ id: 'pb1', label: 'Family dinner', days: [1, 2, 3, 4, 5], date: null, start: '18:00', end: '20:00' }]);
+  assert.deepEqual(s.settings.dayParts, { morning: { start: '06:00', end: '12:00' }, afternoon: { start: '12:00', end: '18:00' }, evening: { start: '18:00', end: '22:00' } });
+  assert.deepEqual(s.tasks.map((t) => [t.id, t.title, t.status, t.domain, t.importance, t.dueDate, t.goalId, t.overrides.join()]), [
+    ['t1', 'Task one', 'open', 'career', 4, '2026-11-23', 'g1', 'REST_DAY'],
+    ['t2', 'Done task', 'done', 'family', 3, null, null, ''],
+  ]);
+  assert.equal(s.goals[0].milestones[0].done, true);
+  assert.equal(s.sources.length, 1);
+  assert.deepEqual(s.events[0].overrides, ['DOUBLE_BOOKED']);
+  // Saving and loading again is stable.
+  assert.deepEqual(normalizeState(JSON.parse(JSON.stringify(s))), s);
+});
+
+test('version 3 keeps uncategorized tasks, one-time blocks and edited day parts', () => {
+  const s = normalizeState({
+    schemaVersion: 3,
+    settings: {
+      protectedBlocks: [{ id: 'pb2', label: 'Friday evening', days: [5], date: '2026-11-20', start: '18:00', end: '22:00' }],
+      dayParts: { morning: { start: '07:00', end: '11:00' }, afternoon: { start: '13:00', end: '12:00' } }, // afternoon invalid → default
+    },
+    tasks: [{ id: 't', title: 'Loose end', status: 'open', domain: null }],
+  });
+  assert.equal(s.tasks[0].domain, null);
+  assert.deepEqual(s.settings.protectedBlocks[0], { id: 'pb2', label: 'Friday evening', days: [], date: '2026-11-20', start: '18:00', end: '22:00' });
+  assert.deepEqual(s.settings.dayParts.morning, { start: '07:00', end: '11:00' });
+  assert.deepEqual(s.settings.dayParts.afternoon, { start: '12:00', end: '18:00' });
+});
+
+test('weekly review counts uncategorized tasks and suggests sorting them', () => {
+  const state = { ...emptyState(), tasks: [{ id: 'u', title: 'Loose end', status: 'open', domain: null, dueDate: '2026-11-20' }] };
+  const r = weeklyReview(state, TODAY);
+  assert.equal(r.byDomain.find((d) => d.domain === null).unfinished, 1);
+  assert.ok(r.attention.some((a) => a.kind === 'uncategorized'));
+});
+
 test('import validates and cleans data', () => {
   const restored = importJSON(exportJSON(sampleState(TODAY)));
   assert.deepEqual(restored, sampleState(TODAY));
   assert.throws(() => importJSON('[]'));
   assert.throws(() => importJSON('{"schemaVersion": 99}'));
-  assert.throws(() => importJSON('{"schemaVersion": 3}'));
+  assert.throws(() => importJSON('{"schemaVersion": 4}'));
   const cleaned = normalizeState({
     tasks: [{ id: 'x', title: 'T', domain: 'nonsense', importance: 12, dueDate: '2026-02-30', goalId: 'missing', overrides: ['BOGUS', 'REST_DAY'] }, { title: 'no id' }],
   });
   assert.equal(cleaned.tasks.length, 1);
-  assert.equal(cleaned.tasks[0].domain, 'growth');
+  assert.equal(cleaned.tasks[0].domain, null); // unknown area → uncategorized (v3), never a guessed area
   assert.equal(cleaned.tasks[0].importance, 5);
   assert.equal(cleaned.tasks[0].dueDate, null);
   assert.equal(cleaned.tasks[0].goalId, null);

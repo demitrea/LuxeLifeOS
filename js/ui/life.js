@@ -10,7 +10,9 @@ export function renderLife({ state, today, ui }) {
   const view = ui.lifeView;
   const filter = ui.lifeFilter;
   const inView = tasks.filter((t) => (view === 'done' ? t.status === 'done' : t.status === 'open'));
-  const filtered = filter === 'all' ? inView : inView.filter((t) => t.domain === filter);
+  const inFilter = (t) => (filter === 'none' ? !t.domain : t.domain === filter);
+  const filtered = filter === 'all' ? inView : inView.filter(inFilter);
+  const uncategorized = inView.filter((t) => !t.domain).length;
   const openCount = tasks.filter((t) => t.status === 'open').length;
   const doneCount = tasks.length - openCount;
 
@@ -37,6 +39,7 @@ export function renderLife({ state, today, ui }) {
 
   <div class="chips" role="group" aria-label="Filter by life area">
     ${chip('all', 'All', inView.length)}
+    ${uncategorized || filter === 'none' ? chip('none', 'Uncategorized', uncategorized, 'none') : ''}
     ${DOMAINS.map((d) => chip(d.id, d.label, inView.filter((t) => t.domain === d.id).length, d.type)).join('')}
   </div>
   <p class="legend small muted"><span class="legend-dot legend-professional"></span>Professional (counts toward work capacity) <span class="legend-dot legend-personal"></span>Personal</p>

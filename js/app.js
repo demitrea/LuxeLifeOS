@@ -3,12 +3,14 @@
 import {
   emptyState, exportJSON, importJSON, loadState, newId, sampleState, saveState,
 } from './store.js';
-import { needsDecision, newConflicts } from './logic/boundaries.js';
+import { conflictsInRange, diffConflicts, needsDecision, newConflicts } from './logic/boundaries.js';
+import { answerQuestion, isReady, parseCapture, toRecords } from './logic/capture.js';
 import { localISODate, localISODateTime, timeToMinutes } from './logic/dates.js';
 import { defaultTargetDate } from './logic/goals.js';
 import { goalsMap, scoreTask } from './logic/priority.js';
 import { weeklyReview } from './logic/review.js';
 import { eventsFromICS } from './integrations/ics.js';
+import { dictationSheet, reviewSheet as captureReviewSheet } from './ui/capture.js';
 import { renderToday } from './ui/today.js';
 import { renderLife } from './ui/life.js';
 import { renderGoals } from './ui/goals.js';
@@ -27,7 +29,11 @@ const SCREENS = {
 
 const loaded = loadState();
 let state = loaded.state;
-const ui = { lifeView: 'open', lifeFilter: 'all' };
+const DRAFT_KEY = 'luxelifeos.captureDraft';
+const readDraft = () => { try { return localStorage.getItem(DRAFT_KEY) || ''; } catch { return ''; } };
+const writeDraft = (v) => { try { if (v) localStorage.setItem(DRAFT_KEY, v); else localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
+const ui = { lifeView: 'open', lifeFilter: 'all', captureDraft: readDraft(), lastCapture: null };
+let capture = null; // the note being reviewed: { text, items, excluded, editing }
 let pendingTask = null; // a task waiting for a boundary decision
 let pendingImport = null; // a calendar file waiting for the user's choices
 let undo = null;
@@ -89,6 +95,7 @@ sheet.addEventListener('close', () => {
   sheetBody.innerHTML = '';
   pendingTask = null;
   pendingImport = null;
+  capture = null;
   lastFocus?.focus?.({ preventScroll: true });
 });
 sheet.addEventListener('click', (e) => {
@@ -107,6 +114,7 @@ function toast(message, { error = false, undoLabel } = {}) {
 
 // ---------- tasks ----------
 function blankTask() {
+  if (ui.lifeFilter === 'none') return { domain: null, importance: 3 };
   return { domain: ui.lifeFilter !== 'all' ? ui.lifeFilter : 'career', importance: 3 };
 }
 
@@ -116,7 +124,7 @@ function readTaskForm(form) {
   return {
     id: v('id'),
     title: v('title'),
-    domain: v('domain'),
+    domain: v('domain') || null,
     importance: Number(v('importance')) || 3,
     dueDate: v('dueDate') || null,
     scheduledDate: v('scheduledDate') || null,
@@ -204,12 +212,13 @@ function submitBlock(form) {
   const block = {
     id: (f.get('id') || '').toString() || newId('pb'),
     label: (f.get('label') || '').toString().trim(),
-    days: f.getAll('days').map(Number),
+    days: f.get('date') ? [] : f.getAll('days').map(Number),
+    date: (f.get('date') || '').toString() || null,
     start: (f.get('start') || '').toString(),
     end: (f.get('end') || '').toString(),
   };
   if (!block.label) return formError(form, 'Please describe what this time is for.');
-  if (!block.days.length) return formError(form, 'Choose at least one day.');
+  if (!block.date && !block.days.length) return formError(form, 'Choose a date or at least one day.');
   if (!(timeToMinutes(block.end) > timeToMinutes(block.start))) return formError(form, 'The end time must be after the start time (same day).');
   const list = state.settings.protectedBlocks;
   const exists = list.some((b) => b.id === block.id);
@@ -258,10 +267,174 @@ function submitImport(form) {
   }, `${events.length} events imported from “${label}”.`);
 }
 
+// ---------- quick capture ----------
+let previewSeq = 0;
+const previewId = (prefix) => `${prefix}_preview${(previewSeq += 1)}`;
+
+/** Builds the state that saving these items would produce, and the conflicts it would add. */
+function buildBatch(items, makeId) {
+  const now = localISODateTime();
+  const tasks = [];
+  const blocks = [];
+  const ids = new Map();
+  for (const item of items) {
+    const r = toRecords([item], { makeId, now });
+    tasks.push(...r.tasks);
+    blocks.push(...r.blocks);
+    ids.set(item.id, { tasks: r.tasks.map((t) => t.id), blocks: r.blocks.map((b) => b.id) });
+  }
+  const next = {
+    ...state,
+    tasks: [...state.tasks, ...tasks],
+    settings: { ...state.settings, protectedBlocks: [...state.settings.protectedBlocks, ...blocks] },
+  };
+  const before = conflictsInRange(state.tasks, state.settings, today(), undefined, state.events);
+  const after = conflictsInRange(next.tasks, next.settings, today(), undefined, state.events);
+  const fresh = diffConflicts(before, after);
+  const byItem = new Map();
+  for (const [itemId, rec] of ids) {
+    byItem.set(itemId, fresh.filter((c) => (c.taskIds || []).some((id) => rec.tasks.includes(id)) || rec.blocks.includes(c.blockId)));
+  }
+  return { next, ids, fresh, byItem, tasks, blocks };
+}
+
+const includedItems = () => capture.items.filter((i) => !capture.excluded.has(i.id));
+
+function showReview(keepScroll) {
+  const batch = buildBatch(includedItems().filter(isReady), previewId);
+  const html = captureReviewSheet(capture, batch.byItem);
+  if (keepScroll && sheet.open) {
+    const y = sheet.scrollTop;
+    sheetBody.innerHTML = html;
+    sheet.scrollTop = y;
+  } else {
+    openSheet(html);
+    const keep = capture;
+    capture = keep;
+  }
+}
+
+function startReview() {
+  const box = document.getElementById('capture-text');
+  const text = (box ? box.value : ui.captureDraft).trim();
+  if (!text) {
+    toast('Type or dictate something first.');
+    box?.focus();
+    return;
+  }
+  ui.captureDraft = text;
+  writeDraft(text);
+  const items = parseCapture(text, { today: today(), settings: state.settings });
+  const next = { text, items, excluded: new Set(), editing: null };
+  capture = next;
+  showReview(false);
+  capture = next; // openSheet may run the close handler of a previous sheet
+}
+
+function updateCaptureItem(form) {
+  const item = capture.items.find((i) => i.id === form.dataset.id);
+  if (!item) return;
+  const f = new FormData(form);
+  const v = (k) => (f.get(k) || '').toString().trim();
+  const title = v('title');
+  if (!title) return formError(form, 'Please give it a name.');
+  const kind = v('kind') || item.kind;
+  let next;
+  if (kind === 'protect') {
+    const date = v('date') || null;
+    const days = date ? [] : f.getAll('days').map(Number);
+    const start = timeToMinutes(v('start'));
+    const end = timeToMinutes(v('end'));
+    if (!date && !days.length) return formError(form, 'Choose a date, or the days it repeats.');
+    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return formError(form, 'Choose a start and an end time (end after start).');
+    const keepDates = item.block && item.block.dates && item.block.dates.length > 1 && date === item.block.dates[0];
+    next = {
+      ...item, kind, title, isFollowUp: false,
+      block: { ...(item.block || {}), label: title, date: keepDates ? null : date, dates: keepDates ? item.block.dates : null, days, start, end },
+    };
+  } else {
+    const dayField = kind === 'followup' ? 'followUpDate' : 'scheduledDate';
+    next = {
+      ...item, kind, title, isFollowUp: kind === 'followup',
+      domain: v('domain') || null,
+      importance: Number(v('importance')) || item.importance || 3,
+      dueDate: v('dueDate') || null,
+      [dayField]: v(dayField) || null,
+      startTime: v('startTime') || null,
+    };
+  }
+  // A correction answers any open questions about this item.
+  next.questions = item.questions.map((q) => (q.answer === null ? { ...q, answer: -1 } : q));
+  next.confidence = 'parsed';
+  capture.items = capture.items.map((i) => (i.id === item.id ? next : i));
+  capture.editing = null;
+  showReview(true);
+}
+
+function switchCaptureKind(form, kind) {
+  const item = capture.items.find((i) => i.id === form.dataset.id);
+  if (!item) return;
+  const title = (form.elements.title?.value || item.title).trim();
+  const next = { ...item, kind, title, isFollowUp: kind === 'followup' };
+  if (kind === 'protect' && !item.block) {
+    next.block = { label: title, date: item.scheduledDate || item.followUpDate || item.dueDate || null, dates: null, days: [], start: null, end: null };
+  }
+  if (kind === 'followup' && !item.followUpDate) next.followUpDate = item.scheduledDate || null;
+  capture.items = capture.items.map((i) => (i.id === item.id ? next : i));
+  showReview(true);
+}
+
+function saveCapture() {
+  const items = includedItems();
+  if (!items.length || !items.every(isReady)) return;
+  const batch = buildBatch(items, newId);
+  // One confirmation: saving records any boundary warnings on the new tasks as intentional overrides.
+  const tasks = batch.next.tasks.map((t) => {
+    if (!batch.tasks.some((n) => n.id === t.id)) return t;
+    const codes = batch.fresh.filter((c) => c.severity !== 'notice' && (c.taskIds || []).includes(t.id)).map((c) => c.code);
+    return codes.length ? { ...t, overrides: [...new Set(codes)] } : t;
+  });
+  ui.lastCapture = {
+    taskIds: batch.tasks.map((t) => t.id),
+    blockIds: batch.blocks.map((b) => b.id),
+    count: items.length,
+    at: Date.now(),
+  };
+  ui.captureDraft = '';
+  writeDraft('');
+  closeSheet();
+  commit({ ...batch.next, tasks });
+  undo = undoCapture;
+  toast(`Saved ${items.length} item${items.length === 1 ? '' : 's'}.`, { undoLabel: 'Undo' });
+}
+
+function undoCapture() {
+  const last = ui.lastCapture;
+  if (!last) return;
+  const taskIds = new Set(last.taskIds);
+  const blockIds = new Set(last.blockIds);
+  ui.lastCapture = null;
+  commit({
+    ...state,
+    tasks: state.tasks.filter((t) => !taskIds.has(t.id)),
+    settings: { ...state.settings, protectedBlocks: state.settings.protectedBlocks.filter((b) => !blockIds.has(b.id)) },
+  }, 'Removed the items from your note.');
+}
+
 // ---------- settings ----------
 function updateSetting(el) {
   const key = el.dataset.setting;
   const s = { ...state.settings };
+  if (key === 'dayPart') {
+    const { part, edge } = el.dataset;
+    const span = { ...s.dayParts[part], [edge]: el.value };
+    if (Number.isNaN(timeToMinutes(span.start)) || Number.isNaN(timeToMinutes(span.end)) || timeToMinutes(span.end) <= timeToMinutes(span.start)) {
+      toast('The end time must be after the start time.', { error: true });
+      return render();
+    }
+    s.dayParts = { ...s.dayParts, [part]: span };
+    return commit({ ...state, settings: s }, `"${part[0].toUpperCase()}${part.slice(1)}" now means ${span.start}–${span.end}.`);
+  }
   if (key === 'workStart' || key === 'workEnd') {
     if (Number.isNaN(timeToMinutes(el.value))) return render();
     s[key] = el.value;
@@ -308,6 +481,30 @@ async function importData(file) {
 // ---------- actions ----------
 const actions = {
   'close-sheet': closeSheet,
+  'capture-review': startReview,
+  'capture-edit-text': () => {
+    const box = document.getElementById('capture-text');
+    lastFocus = box; // the sheet's close handler returns focus here
+    closeSheet();
+    // Focus synchronously inside the tap so iOS reopens the keyboard.
+    if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+  },
+  'capture-toggle': (el) => {
+    const id = el.dataset.id;
+    if (capture.excluded.has(id)) capture.excluded.delete(id); else capture.excluded.add(id);
+    showReview(true);
+  },
+  'capture-edit': (el) => {
+    capture.editing = capture.editing === el.dataset.id ? null : el.dataset.id;
+    showReview(true);
+  },
+  'capture-answer': (el) => {
+    capture.items = capture.items.map((i) => (i.id === el.dataset.id ? answerQuestion(i, el.dataset.q, Number(el.dataset.opt)) : i));
+    showReview(true);
+  },
+  'capture-save': saveCapture,
+  'capture-undo': () => { undo = null; toastEl.classList.remove('is-visible'); undoCapture(); },
+  'dictation-info': () => openSheet(dictationSheet()),
   'open-guide': () => openSheet(guideSheet()),
   'open-review': () => openSheet(reviewSheet(weeklyReview(state, today()), today())),
   'new-task': () => openSheet(taskForm(blankTask(), state.goals)),
@@ -465,7 +662,9 @@ document.addEventListener('submit', (e) => {
   const form = e.target.closest('form[data-form]');
   if (!form) return;
   e.preventDefault();
-  ({ task: submitTask, goal: submitGoal, block: submitBlock, import: submitImport })[form.dataset.form]?.(form);
+  ({
+    task: submitTask, goal: submitGoal, block: submitBlock, import: submitImport, 'capture-item': updateCaptureItem,
+  })[form.dataset.form]?.(form);
 });
 
 document.addEventListener('change', (e) => {
@@ -481,6 +680,7 @@ document.addEventListener('change', (e) => {
     el.value = '';
     return;
   }
+  if (el.name === 'kind' && el.form?.dataset.form === 'capture-item') return switchCaptureKind(el.form, el.value);
   if (el.name === 'isFollowUp') {
     const row = el.form.querySelector('.follow-date');
     row.hidden = !el.checked;
@@ -495,6 +695,10 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'capture-text') {
+    ui.captureDraft = e.target.value;
+    writeDraft(e.target.value);
+  }
   if (e.target.name === 'targetDate') e.target.dataset.auto = '0';
 });
 

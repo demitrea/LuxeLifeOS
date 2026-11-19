@@ -15,7 +15,8 @@ export function sheetHeader(title, subtitle = '') {
   </header>`;
 }
 
-const domainOptions = (selected) => ['professional', 'personal'].map((type) => `
+const domainOptions = (selected, allowNone = false) => (allowNone
+  ? `<option value="" ${!selected ? 'selected' : ''}>Uncategorized</option>` : '') + ['professional', 'personal'].map((type) => `
   <optgroup label="${type === 'professional' ? 'Professional' : 'Personal'}">
     ${DOMAINS.filter((d) => d.type === type).map((d) => `<option value="${d.id}" ${d.id === selected ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}
   </optgroup>`).join('');
@@ -32,7 +33,7 @@ export function taskForm(task, goals) {
     <label class="field"><span>What needs to be done?</span>
       <input name="title" required maxlength="200" autocomplete="off" value="${esc(task.title || '')}" placeholder="e.g. Prepare presentation outline">
     </label>
-    <label class="field"><span>Life area</span><select name="domain">${domainOptions(task.domain || 'career')}</select></label>
+    <label class="field"><span>Life area</span><select name="domain">${domainOptions(task.domain === undefined ? 'career' : task.domain, true)}</select></label>
     <fieldset class="field">
       <legend>Importance <span class="muted small">1 = minor · 5 = critical</span></legend>
       <div class="scale">${[1, 2, 3, 4, 5].map((n) => `
@@ -151,7 +152,9 @@ export function blockForm(block) {
   <form class="sheet-body form" data-form="block" novalidate>
     <input type="hidden" name="id" value="${esc(block.id || '')}">
     <label class="field"><span>What is this time for?</span><input name="label" required maxlength="80" value="${esc(block.label || '')}" placeholder="e.g. Family dinner"></label>
-    <fieldset class="field"><legend>Days</legend>
+    <label class="field"><span>One time only on <span class="muted">(optional — leave empty to repeat weekly)</span></span>
+      <input type="date" name="date" value="${esc(block.date || '')}"></label>
+    <fieldset class="field"><legend>Repeat on <span class="muted small">(ignored when a date is set)</span></legend>
       <div class="day-toggles">${ORDER.map((d) => `
         <label class="day-toggle"><input type="checkbox" name="days" value="${d}" ${days.includes(d) ? 'checked' : ''}><span aria-label="${WEEKDAY_SHORT[d]}">${WEEKDAY_SHORT[d].slice(0, 2)}</span></label>`).join('')}
       </div>
@@ -255,6 +258,19 @@ export function guideSheet() {
       <li><strong>Complete</strong> when every milestone is done.</li>
     </ul>
     <p class="small muted">Default target dates: ${HORIZONS.map((h) => `${h.label} = ${HORIZON_DAYS[h.id]} days`).join(', ')}.</p>
+
+    <h3>Quick capture (typing or dictating a note)</h3>
+    <p>Each sentence, or each part that starts with an action such as “need to”, “call” or “protect”, becomes one proposed item. Nothing is saved until you review it.</p>
+    <ul>
+      <li><strong>Type:</strong> “protect”, “block off” or “no work” → protected time. “Follow up”, “check in with” or “waiting on” → follow-up. Anything else → task.</li>
+      <li><strong>Dates:</strong> today, tomorrow, weekday names, “in 3 days”, “Nov 25”, “11/25”, “the 25th”. A date after “due”, “by” or “deadline” is a deadline. Otherwise it is the day you plan to do it. “Next week” or “soon” never becomes a date.</li>
+      <li><strong>Weekdays:</strong> “Monday” means the next Monday after today. If today is Monday, or “next Friday” could mean two dates, you are asked.</li>
+      <li><strong>Protected time:</strong> one time unless you say “every” or use a plural (“Fridays”). “Morning”, “afternoon” and “evening” use the times you set under Boundaries.</li>
+      <li><strong>Life area:</strong> only from listed words (for example “paper” or “exam” → Education). No listed word, or words from different areas → uncategorized.</li>
+      <li><strong>Importance:</strong> only from words like “urgent” (5), “important” (4) or “low priority” (2). Otherwise normal (3).</li>
+      <li><strong>Questions</strong> appear only when the answer changes a deadline, a time or a boundary, such as AM or PM.</li>
+      <li>If a statement can’t be interpreted confidently, it is kept exactly as you said it.</li>
+    </ul>
 
     <h3>Boundary Intelligence</h3>
     <p>Work tasks are those in Career, Business and Education. Checks run on tasks with a planned date and on imported calendar events.</p>

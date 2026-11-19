@@ -7,7 +7,7 @@ const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;
 export const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
 
 const DOMAIN_MAP = new Map(DOMAINS.map((d) => [d.id, d]));
-export const domainLabel = (id) => DOMAIN_MAP.get(id)?.label ?? 'Other';
+export const domainLabel = (id) => DOMAIN_MAP.get(id)?.label ?? 'Uncategorized';
 export const domainType = (id) => DOMAIN_MAP.get(id)?.type ?? 'personal';
 
 const PATHS = {
@@ -26,6 +26,8 @@ const PATHS = {
   upload: '<path d="M12 16V5M7 9.5l5-5 5 5M5 20h14"/>',
   sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6"/>',
+  undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-4"/>',
 };
 
 export function icon(name, cls = '') {

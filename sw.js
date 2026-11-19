@@ -1,6 +1,6 @@
 // LuxeLifeOS service worker — makes the app work offline.
 // Bump CACHE_VERSION on every release so devices pick up the new files.
-const CACHE_VERSION = 'luxelifeos-v1';
+const CACHE_VERSION = 'luxelifeos-v2';
 
 const APP_FILES = [
   './',
@@ -15,6 +15,7 @@ const APP_FILES = [
   './js/logic/goals.js',
   './js/logic/boundaries.js',
   './js/logic/review.js',
+  './js/logic/capture.js',
   './js/integrations/contract.js',
   './js/integrations/ics.js',
   './js/ui/shared.js',
@@ -23,6 +24,7 @@ const APP_FILES = [
   './js/ui/goals.js',
   './js/ui/boundaries.js',
   './js/ui/sheets.js',
+  './js/ui/capture.js',
   './icons/apple-touch-icon.png',
   './icons/icon-192.png',
   './icons/icon-512.png',

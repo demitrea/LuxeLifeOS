@@ -177,3 +177,32 @@ test('conflictsInRange includes days that only have meetings', () => {
   const sat = meeting('Weekend call', { date: SAT, endDate: SAT });
   assert.deepEqual(conflictsInRange([], settings, WED, undefined, [sat]).map((c) => c.code), ['REST_DAY']);
 });
+
+// ---------- one-time protected blocks and batch checks (v3) ----------
+import { diffConflicts } from '../js/logic/boundaries.js';
+
+test('a one-time protected block applies only on its date', () => {
+  const s = { ...settings, protectedBlocks: [{ id: 'once', label: 'Friday evening', days: [], date: '2026-11-20', start: '18:00', end: '22:00' }] };
+  const fri = task('Late call', { scheduledDate: '2026-11-20', startTime: '19:00', estimateMinutes: 30, domain: 'family' });
+  const nextFri = { ...fri, id: 'Next week', scheduledDate: '2026-11-27' };
+  assert.deepEqual(codes(dayConflicts([fri], s, '2026-11-20')), ['PROTECTED_TIME']);
+  assert.deepEqual(codes(dayConflicts([nextFri], s, '2026-11-27')), []);
+});
+
+test('uncategorized tasks never count as work', () => {
+  const t = task('Loose end', { scheduledDate: SAT, domain: null, estimateMinutes: 600, startTime: '07:00' });
+  assert.equal(dayLoad([t], SAT), 0);
+  assert.deepEqual(codes(dayConflicts([t], settings, SAT)), []);
+});
+
+test('diffConflicts: a new protected block reveals conflicts with existing items; removing work never counts', () => {
+  const existing = [task('Client call', { scheduledDate: WED, startTime: '19:00', estimateMinutes: 30 })];
+  const withBlock = { ...settings, protectedBlocks: [...settings.protectedBlocks, { id: 'gym', label: 'Gym', days: [], date: WED, start: '07:00', end: '08:00' }] };
+  const before = conflictsInRange(existing, { ...settings, protectedBlocks: [] }, WED);
+  const after = conflictsInRange(existing, settings, WED);
+  assert.deepEqual(diffConflicts(before, after).map((c) => c.code), ['PROTECTED_TIME']);
+  assert.deepEqual(diffConflicts(after, conflictsInRange(existing, withBlock, WED)), []);
+  const heavy = [task('a', { scheduledDate: WED, estimateMinutes: 540 })];
+  const lighter = [task('a', { scheduledDate: WED, estimateMinutes: 450 })];
+  assert.deepEqual(diffConflicts(conflictsInRange(heavy, settings, WED), conflictsInRange(lighter, settings, WED)), []);
+});

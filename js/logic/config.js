@@ -89,4 +89,35 @@ export const INTEGRATIONS = Object.freeze({
   maxEventsPerSource: 3000,
 });
 
+/**
+ * Quick capture ("What's on your mind?"): published, deterministic rules.
+ * A life area is suggested only when the user's own words contain one of
+ * these listed words, and only when they all point to the same area.
+ */
+export const CAPTURE = Object.freeze({
+  // Default meaning of time-of-day words. Users can edit these in Boundaries.
+  defaultDayParts: Object.freeze({
+    morning: Object.freeze({ start: '06:00', end: '12:00' }),
+    afternoon: Object.freeze({ start: '12:00', end: '18:00' }),
+    evening: Object.freeze({ start: '18:00', end: '22:00' }),
+  }),
+  areaWords: Object.freeze({
+    education: ['paper', 'essay', 'exam', 'midterm', 'quiz', 'homework', 'assignment', 'class', 'lecture', 'course', 'thesis', 'dissertation', 'study', 'studying', 'professor', 'syllabus', 'seminar', 'tutor', 'school', 'semester'],
+    career: ['client', 'clients', 'report', 'meeting', 'boss', 'manager', 'presentation', 'proposal', 'office', 'coworker', 'colleague', 'interview', 'resume', 'team'],
+    business: ['invoice', 'invoices', 'customer', 'customers', 'sales', 'startup', 'vendor', 'supplier', 'pitch', 'investor', 'investors', 'website'],
+    finances: ['bill', 'bills', 'rent', 'budget', 'tax', 'taxes', 'bank', 'payment', 'mortgage', 'insurance', 'savings', 'loan', 'credit'],
+    family: ['mom', 'dad', 'mother', 'father', 'kids', 'son', 'daughter', 'family', 'parents', 'sister', 'brother', 'grandma', 'grandpa', 'grandmother', 'grandfather', 'aunt', 'uncle'],
+    relationships: ['friend', 'friends', 'partner', 'girlfriend', 'boyfriend', 'anniversary', 'wedding', 'date night'],
+    wellness: ['gym', 'workout', 'jog', 'doctor', 'dentist', 'therapy', 'therapist', 'yoga', 'meditate', 'meditation', 'checkup', 'prescription', 'pharmacy', 'physio'],
+    growth: ['journal', 'journaling', 'learn', 'learning', 'practice', 'hobby', 'podcast', 'language'],
+  }),
+  // Importance is set only when one of these phrases is spoken.
+  importanceWords: Object.freeze([
+    Object.freeze({ level: 5, words: ['urgent', 'urgently', 'asap', 'as soon as possible', 'critical', 'top priority', 'immediately'] }),
+    Object.freeze({ level: 4, words: ['important', 'high priority', 'crucial'] }),
+    Object.freeze({ level: 2, words: ['low priority', 'whenever', 'someday', 'if i have time', 'no rush', 'not urgent', 'eventually'] }),
+  ]),
+  defaultImportance: 3,
+});
+
 export const SEVERITY_RANK = Object.freeze({ high: 0, medium: 1, notice: 2 });

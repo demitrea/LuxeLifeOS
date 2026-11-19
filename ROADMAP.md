@@ -11,6 +11,7 @@ This roadmap describes where LuxeLifeOS is going after the initial release. Vers
 3. **Read-only first.** Any connected account starts with the smallest read-only permissions. Write access, if ever offered, is a separate, explicit opt-in.
 4. **The user stays in control.** Every connection can be inspected, limited and disconnected, and disconnecting deletes that account's data from the device.
 5. **Transparent rules, no AI.** Integrations supply data. The same published, testable rules decide priorities and conflicts.
+6. **Voice-first, low-friction.** LuxeLifeOS should reduce administrative work, not add to it. Speaking or typing a note naturally comes first. Forms are the fallback. Every interpretation is shown for review before saving, can be corrected with one interaction, and never invents details.
 
 ---
 
@@ -18,7 +19,7 @@ This roadmap describes where LuxeLifeOS is going after the initial release. Vers
 
 | Version | Focus | Status |
 |---|---|---|
-| **1.0 — Project 2** | Offline Personal Chief of Staff: Today briefing, My Life, My Goals, Boundary Intelligence, Executive Review, **on-device calendar file (.ics) import** | **Built** |
+| **1.0 — Project 2** | Offline Personal Chief of Staff: Today briefing, My Life, My Goals, Boundary Intelligence, Executive Review, on-device calendar file (.ics) import, and **voice-first quick capture** (type or use iPhone keyboard dictation, rule-based interpretation, one-tap save, Undo) | **Built** |
 | 1.1 | Polish from real-world testing: scoring weight review, recurring tasks, editable life areas | Planned |
 | **2.0** | **Microsoft Outlook integration**: multiple read-only accounts, consolidated calendars, flagged-email follow-ups, pending commitments | Designed (this document) |
 | 2.x | Optional write actions (for example, suggest declining a meeting that breaks a boundary), with explicit opt-in | Exploratory |
@@ -149,6 +150,18 @@ These matter for an app that handles both personal and employer data. They are n
 - How long should synced snapshots be kept on the device: 7 days back and 90 forward, as with .ics, or user-configurable?
 
 ---
+
+## Voice-first: next steps after the academic release
+
+Version 1.0 gets voice input through the **iPhone keyboard's own dictation**: LuxeLifeOS receives only text and interprets it with published rules. An in-app microphone was deliberately left out, because:
+- Safari's Web Speech API may send audio to Apple's servers, and a page cannot force on-device processing.
+- WebKit has said the API is not available in Home Screen web apps.
+
+Possible later steps, each to be weighed against the guiding principles:
+- **Broader phrasing:** more date and time forms, other languages, and editing existing items by voice ("move my paper to Tuesday", "mark the budget review done").
+- **Goals by voice:** "My goal is to finish the certificate by March", with milestones confirmed in the review.
+- **Re-evaluate in-app speech** if iPhone browsers gain a reliable, on-device speech API for installed web apps. Use it only if it can be shown to keep audio on the device, or with clear opt-in disclosure if it cannot.
+- **Optional AI interpretation (post-course, opt-in only):** clearly labelled, off by default, with the rule-based parser remaining the default and the review step unchanged.
 
 ## Other ideas under consideration
 
