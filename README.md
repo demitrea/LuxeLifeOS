@@ -336,7 +336,7 @@ On iOS 16.4 and later, **Add to Home Screen** is also available from the Share m
 The service worker serves cached files first, so the app opens instantly offline. To ship a change:
 
 1. Edit the files.
-2. In [`sw.js`](sw.js), change `CACHE_VERSION` (for example `luxelifeos-v1` → `luxelifeos-v2`). If you added a new file, add it to `APP_FILES`.
+2. In [`sw.js`](sw.js), change `CACHE_VERSION` (for example `luxelifeos-v3` → `luxelifeos-v4`). If you added a new file, add it to `APP_FILES`.
 3. Commit and push to `main`.
 4. On the iPhone, fully close LuxeLifeOS (swipe it away in the app switcher), then open it once or twice. The new version installs in the background and appears on the next launch.
 

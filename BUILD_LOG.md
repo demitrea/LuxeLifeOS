@@ -17,7 +17,8 @@ A factual record of how LuxeLifeOS was planned, built, tested, corrected and dep
 | Nov 18–19 | `6ea04a3` | On-device calendar (.ics) import and Microsoft Outlook roadmap |
 | Nov 19 | `8d0bb54` | README: owner's original description preserved and exact repository name used |
 | Nov 19 | — | GitHub Pages enabled by the owner; live site verified |
-| Nov 19 | *(this release)* | Voice-first quick capture, schema v3, uncategorized tasks, one-time protected time, editable day parts |
+| Nov 19 | `9da0617` | Voice-first quick capture, schema v3, uncategorized tasks, one-time protected time, editable day parts |
+| Nov 19 | *(follow-up)* | Touch-target fix found during live verification (see #14); build log updated with live results |
 
 Automated test count: **38 → 57 → 84**, all passing at each release.
 
@@ -154,6 +155,19 @@ Automated test count: **38 → 57 → 84**, all passing at each release.
   - No console errors.
 - Layouts with no sideways scrolling at 320 / 390 / 430 / 768px on all four screens, plus the review sheet and its editor.
 - Regression runs of the earlier test scripts (core flow, calendar import) passed.
+
+**Deployment and live verification (Phase 5):**
+- Pushed as a normal fast-forward (`8d0bb54..9da0617`). GitHub Pages published it within about 30 seconds.
+- On the live site, all files load with the correct content types, including the new `js/logic/capture.js` and `js/ui/capture.js`.
+- The full browser suite was re-run against **https://demitrea.github.io/LuxeLifeOS/**:
+  - Capture flow, migration, Undo, questions, overrides and offline capture all passed (offline cache `luxelifeos-v2`, 26 files).
+  - Core flow (12 tasks after reload, offline reload) and calendar import passed.
+  - No console errors.
+  - No sideways scrolling at any size.
+
+| # | Problem found | Type | Fix |
+|---|---|---|---|
+| 14 | The live layout check flagged the review sheet's **Edit wording** link as 32px tall on the 320px iPhone SE, below the 44pt touch-target minimum used elsewhere | Accessibility | Raised to 44px. Offline cache bumped to `luxelifeos-v3` so installed copies update. Re-tested and redeployed. |
 
 **Known limitations (also in the README):**
 - The parser understands a defined set of English phrasings. Numeric dates are month/day.

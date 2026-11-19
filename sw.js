@@ -1,6 +1,6 @@
 // LuxeLifeOS service worker — makes the app work offline.
 // Bump CACHE_VERSION on every release so devices pick up the new files.
-const CACHE_VERSION = 'luxelifeos-v2';
+const CACHE_VERSION = 'luxelifeos-v3';
 
 const APP_FILES = [
   './',

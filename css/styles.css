@@ -343,7 +343,8 @@ textarea.capture-input {
 }
 .review-note { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--surface-2); }
 .review-note p { margin: 0; font-style: italic; color: var(--ink-2); overflow-wrap: anywhere; }
-.review-note .btn-link { flex: none; min-height: 32px; }
+.review-note { align-items: center; }
+.review-note .btn-link { flex: none; min-height: 44px; padding: 0 2px; }
 .review-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
 .review-item { padding: 6px 12px 10px 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .review-item.is-editing { border-color: var(--gold); }
